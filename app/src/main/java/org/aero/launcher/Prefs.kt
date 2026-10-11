@@ -31,6 +31,9 @@ class Prefs(ctx: Context) {
     val engine = mutableStateOf(sp.getString("engine", "google")!!)
     val fetchUser = mutableStateOf(sp.getString("fetch_user", "aero")!!)
     val slots = mutableStateOf(loadSlots())
+    /** We ask once, on the first start, to become the home screen; after that only the banner asks. */
+    val askedHome get() = sp.getBoolean("asked_home", false)
+    fun setAskedHome() = sp.edit().putBoolean("asked_home", true).apply()
 
     fun setBackground(v: String) { background.value = v; sp.edit().putString("background", v).apply() }
     fun setShimmer(v: Boolean) { shimmer.value = v; sp.edit().putBoolean("shimmer", v).apply() }

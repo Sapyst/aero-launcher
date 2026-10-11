@@ -47,6 +47,7 @@ import kotlinx.coroutines.delay
 @Composable
 fun Home(
     repo: AppRepository, prefs: Prefs, host: WidgetHost, art: AsciiArt, homePresses: Int,
+    isDefault: Boolean, onMakeDefault: () -> Unit,
     onOpenSearch: () -> Unit, onOpenSettings: () -> Unit,
 ) {
     val ctx = LocalContext.current
@@ -92,6 +93,10 @@ fun Home(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
+                if (!isDefault) TermBox("setup", Modifier.fillMaxWidth(), onClick = onMakeDefault) {
+                    T("> make aero launcher your home screen", 15.sp)
+                    T("so the Home button and the swipe-up gesture come here", 11.sp, pal.dim)
+                }
                 var i = 0
                 while (i < slots.size) {
                     val s = slots[i]

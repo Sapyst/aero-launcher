@@ -33,7 +33,8 @@ import androidx.compose.ui.unit.sp
  * which widgets, in which order, half or full width; Android widgets; background; clock; search; fetch.
  */
 @Composable
-fun SettingsPanel(prefs: Prefs, host: WidgetHost, onClose: () -> Unit) {
+fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefault: () -> Unit, onClose: () -> Unit) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
     val pal = LocalPalette.current
     val slots by prefs.slots
     var picking by remember { mutableStateOf(false) }
@@ -50,6 +51,13 @@ fun SettingsPanel(prefs: Prefs, host: WidgetHost, onClose: () -> Unit) {
                     T("$ aero-launcher --settings", 16.sp)
                     Spacer(Modifier.weight(1f))
                     T("[ close ]", 14.sp, pal.dim, Modifier.clickable(onClick = onClose).padding(6.dp))
+                }
+            }
+            item {
+                TermBox("home screen", Modifier.fillMaxWidth()) {
+                    if (isDefault) T("[x] aero launcher is the phone's home screen", 14.sp)
+                    else T("[ ] not the home screen yet · tap to set", 14.sp, pal.fg, Modifier.fillMaxWidth().clickable(onClick = onMakeDefault).padding(vertical = 6.dp))
+                    T("> android's \"default home app\" page", 13.sp, pal.dim, Modifier.fillMaxWidth().clickable { openHomeSettings(ctx) }.padding(vertical = 6.dp))
                 }
             }
             item {

@@ -19,7 +19,9 @@
         android:label="Aero Launcher"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/Theme.Aero"
-        android:supportsRtl="true">
+        android:supportsRtl="true"
+        android:enableOnBackInvokedCallback="true">
+        <!-- enableOnBackInvokedCallback: the system back gesture uses Android's predictive back (13+) -->
 
         <!-- HOME = this is a home screen; singleTask + clearTaskOnLaunch = the Home button always comes back here -->
         <activity

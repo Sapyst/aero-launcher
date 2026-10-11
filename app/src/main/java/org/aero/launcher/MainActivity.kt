@@ -1,9 +1,12 @@
 package org.aero.launcher
 
 import android.app.Activity
+import android.app.role.RoleManager
 import android.content.Intent
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -31,7 +34,10 @@ import androidx.compose.ui.platform.LocalContext
 /** The home screen activity. Android shows it whenever Home is pressed (it has the HOME intent filter). */
 class MainActivity : ComponentActivity() {
     private val homePresses = mutableIntStateOf(0)
+    private val isDefault = mutableStateOf(true)
     private lateinit var widgets: WidgetHost
+    private lateinit var prefs: Prefs
+    private var askedAt = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,10 +48,35 @@ class MainActivity : ComponentActivity() {
         )
         onBackPressedDispatcher.addCallback(this) { }        // Back on the home screen does nothing
         val repo = AppRepository(this)
-        val prefs = Prefs(this)
+        prefs = Prefs(this)
         widgets = WidgetHost(this)
         val art = AsciiArt.load(this, "eris.txt")
-        setContent { AeroTheme { Launcher(repo, prefs, widgets, art, homePresses.intValue) } }
+        setContent {
+            AeroTheme { Launcher(repo, prefs, widgets, art, homePresses.intValue, isDefault.value, ::requestDefaultHome) }
+        }
+    }
+
+    /**
+     * Asks to become the phone's home screen with Android's own dialog (the HOME "role", Android 10+).
+     * If Android will not show the dialog (refused too many times, or an old Android), opens the
+     * "Default home app" settings page instead.
+     */
+    fun requestDefaultHome() {
+        if (Build.VERSION.SDK_INT >= 29) {
+            val roles = getSystemService(RoleManager::class.java)
+            if (roles.isRoleAvailable(RoleManager.ROLE_HOME) && !roles.isRoleHeld(RoleManager.ROLE_HOME)) {
+                askedAt = SystemClock.elapsedRealtime()
+                @Suppress("DEPRECATION") startActivityForResult(roles.createRequestRoleIntent(RoleManager.ROLE_HOME), REQ_ROLE)
+                return
+            }
+        }
+        openHomeSettings(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        isDefault.value = isDefaultHome(this)
+        if (!isDefault.value && !prefs.askedHome) { prefs.setAskedHome(); requestDefaultHome() }
     }
 
     // widgets from other apps only update while the host is listening (= while we are visible)
@@ -56,7 +87,14 @@ class MainActivity : ComponentActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION") super.onActivityResult(requestCode, resultCode, data)
         widgets.onResult(requestCode, resultCode)
+        if (requestCode == REQ_ROLE) {
+            isDefault.value = isDefaultHome(this)
+            // answered "no" in a blink = Android did not even show its dialog: send to the settings page
+            if (!isDefault.value && SystemClock.elapsedRealtime() - askedAt < 600) openHomeSettings(this)
+        }
     }
+
+    companion object { const val REQ_ROLE = 4201 }
 
     // Home pressed while we are already in front: close panels and go back to the widgets
     override fun onNewIntent(intent: Intent) {
@@ -66,7 +104,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun Launcher(repo: AppRepository, prefs: Prefs, widgets: WidgetHost, art: AsciiArt, homePresses: Int) {
+fun Launcher(
+    repo: AppRepository, prefs: Prefs, widgets: WidgetHost, art: AsciiArt, homePresses: Int,
+    isDefault: Boolean, onMakeDefault: () -> Unit,
+) {
     val activity = LocalContext.current as Activity
     val background by prefs.background
     var searching by remember { mutableStateOf(false) }
@@ -79,7 +120,7 @@ fun Launcher(repo: AppRepository, prefs: Prefs, widgets: WidgetHost, art: AsciiA
         else activity.window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
     }
     Box(Modifier.fillMaxSize()) {
-        Home(repo, prefs, widgets, art, homePresses, onOpenSearch = { searching = true }, onOpenSettings = { settings = true })
+        Home(repo, prefs, widgets, art, homePresses, isDefault, onMakeDefault, onOpenSearch = { searching = true }, onOpenSettings = { settings = true })
         AnimatedVisibility(
             visible = searching,
             enter = slideInVertically { it / 4 } + fadeIn(),
@@ -88,7 +129,7 @@ fun Launcher(repo: AppRepository, prefs: Prefs, widgets: WidgetHost, art: AsciiA
             SearchPanel(repo, prefs, onClose = { searching = false })
         }
         AnimatedVisibility(visible = settings, enter = fadeIn(), exit = fadeOut()) {
-            SettingsPanel(prefs, widgets, onClose = { settings = false })
+            SettingsPanel(prefs, widgets, isDefault, onMakeDefault, onClose = { settings = false })
         }
     }
 }

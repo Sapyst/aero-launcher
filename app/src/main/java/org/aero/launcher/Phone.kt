@@ -32,6 +32,21 @@ fun webSearch(ctx: Context, query: String, engine: String = "google") = runCatch
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 
+/**
+ * Is this launcher the phone's home screen? Android 10+ calls that the HOME "role"; before that,
+ * we ask which app answers the Home button.
+ */
+fun isDefaultHome(ctx: Context): Boolean =
+    if (android.os.Build.VERSION.SDK_INT >= 29)
+        ctx.getSystemService(android.app.role.RoleManager::class.java).isRoleHeld(android.app.role.RoleManager.ROLE_HOME)
+    else ctx.packageManager.resolveActivity(
+        Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), android.content.pm.PackageManager.MATCH_DEFAULT_ONLY,
+    )?.activityInfo?.packageName == ctx.packageName
+
+fun openHomeSettings(ctx: Context) = runCatching {
+    ctx.startActivity(Intent(android.provider.Settings.ACTION_HOME_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+}
+
 fun openWallpaperPicker(ctx: Context) = runCatching {
     ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SET_WALLPAPER), "Wallpaper")
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

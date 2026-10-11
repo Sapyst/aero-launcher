@@ -8,6 +8,8 @@ import android.os.StatFs
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
@@ -82,9 +84,12 @@ fun FetchWidget(repo: AppRepository, prefs: Prefs, modifier: Modifier, onMenu: (
         while (true) { lines = fetchLines(ctx, user, apps.size, battery); delay(60_000) }
     }
     TermBox("fetch", modifier, onLongClick = onMenu) {
-        Row {
-            Column(Modifier.padding(end = 10.dp)) { ROBOT.forEach { T(it, 11.sp, pal.dim) } }
-            Column {
+        val logo by prefs.fetchLogo
+        val invert by prefs.fetchInvert
+        Row(Modifier.fillMaxSize()) {
+            // the logo takes a share of the width (not a fixed size); the text keeps its own size
+            FetchLogo(logo, invert, Modifier.weight(0.38f).fillMaxHeight().padding(end = 10.dp))
+            Column(Modifier.weight(0.62f)) {
                 lines.forEachIndexed { i, (k, v) ->
                     if (i < 2) T(k, 12.sp, if (i == 0) pal.fg else pal.dim, maxLines = 1)
                     else Row {

@@ -27,6 +27,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.compose.rememberLauncherForActivityResult
 import kotlin.math.roundToInt
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.Offset
@@ -187,6 +194,22 @@ fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefa
                         )
                     }
                     T(L("shown as name@phone at the top of fetch", "aparece como nome@celular no topo do fetch"), 11.sp, pal.dim, Modifier.padding(top = 4.dp))
+                    val logo by prefs.fetchLogo
+                    val invert by prefs.fetchInvert
+                    val scope = rememberCoroutineScope()
+                    val pick = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+                        if (uri != null) scope.launch {
+                            withContext(Dispatchers.IO) { saveLogo(ctx, uri) }?.let { prefs.setFetchLogo(it) }
+                        }
+                    }
+                    T(L("logo", "logo"), 12.sp, pal.dim, Modifier.padding(top = 10.dp))
+                    T(L("> pick an image (turned into ascii)", "> escolher uma imagem (vira ascii)"), 14.sp, pal.fg,
+                        Modifier.fillMaxWidth().clickable { pick.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }.padding(vertical = 7.dp))
+                    if (logo.isNotEmpty()) {
+                        Toggle(L("invert (for pictures on a light background)", "inverter (pra fotos de fundo claro)"), invert) { prefs.setFetchInvert(!invert) }
+                        T(L("> back to the robot", "> voltar pro robô"), 14.sp, pal.dim,
+                            Modifier.fillMaxWidth().clickable { prefs.setFetchLogo("") }.padding(vertical = 7.dp))
+                    }
                 }
             }
             item {

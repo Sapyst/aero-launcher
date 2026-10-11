@@ -14,7 +14,8 @@ the widgets of the *Arch Aero OS* desktop (Hyprland) it was made alongside.
   - `weather`: now + 5 days with a temperature-range bar (Open-Meteo, location from the IP)
   - `apps`: pinned apps · `battery`: level, temperature, charger
   - `resources`: rings for cpu clock, memory, storage, heat + live network curve
-  - `fetch`: fastfetch of the phone, read live from Android
+  - `fetch`: fastfetch of the phone, read live from Android; its logo can be any picture, turned into ASCII on
+    the phone and sized as a share of the widget (the text keeps its size)
   - `terminal`: launcher commands (`open`, `web`, `fetch`, `apps`, `clear`) + Android's shell (toybox, inside the app sandbox)
   - **any Android app widget** (music, calendar, notes…), hosted inside a box
 - **Background**: the ASCII statue on true black (pixels off on OLED), with an optional subtle

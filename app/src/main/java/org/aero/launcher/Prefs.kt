@@ -50,6 +50,8 @@ class Prefs(ctx: Context) {
     val textScale = mutableStateOf(sp.getFloat("text_scale", 1f))
     val iconScale = mutableStateOf(sp.getFloat("icon_scale", 1f))
     val showPrompt = mutableStateOf(sp.getBoolean("show_prompt", true))
+    val fetchLogo = mutableStateOf(sp.getString("fetch_logo", "")!!)       // "" = the robot
+    val fetchInvert = mutableStateOf(sp.getBoolean("fetch_invert", false))
     /** We ask once, on the first start, to become the home screen; after that only the banner asks. */
     val askedHome get() = sp.getBoolean("asked_home", false)
     fun setAskedHome() = sp.edit().putBoolean("asked_home", true).apply()
@@ -75,6 +77,8 @@ class Prefs(ctx: Context) {
     fun setFont(v: String) { font.value = v; sp.edit().putString("font", v).apply() }
     fun setTextScale(v: Float) { textScale.value = v; sp.edit().putFloat("text_scale", v).apply() }
     fun setIconScale(v: Float) { iconScale.value = v; sp.edit().putFloat("icon_scale", v).apply() }
+    fun setFetchLogo(v: String) { fetchLogo.value = v; sp.edit().putString("fetch_logo", v).apply() }
+    fun setFetchInvert(v: Boolean) { fetchInvert.value = v; sp.edit().putBoolean("fetch_invert", v).apply() }
     fun setShowPrompt(v: Boolean) { showPrompt.value = v; sp.edit().putBoolean("show_prompt", v).apply() }
 
     /** Adds to the home: page -1 = "not placed yet", the home puts it in the first free cells. */

@@ -19,7 +19,8 @@ the widgets of the *Arch Aero OS* desktop (Hyprland) it was made alongside.
   - **any Android app widget** (music, calendar, notes…), hosted inside a box
 - **Background**: the ASCII statue on true black (pixels off on OLED), with an optional subtle
   "live terminal" shimmer, or the system wallpaper.
-- **Gestures**: drag down = notifications, drag up = search, long press = menus.
+- **Gestures**: drag down = notifications, drag up = search. **Long press a widget and drag it** to move it
+  (the list scrolls by itself at the edges); long press and let go = its menu; long press on empty space = launcher menu.
 - **Search**: live filter (`ffx` finds Firefox), Enter opens the first match, `web <text>` or no
   match = your default browser with the engine you pick (Google, DuckDuckGo, Startpage, Bing).
 - Long press an app: pin to home, app info, uninstall.

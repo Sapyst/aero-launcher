@@ -89,7 +89,7 @@ class WidgetHost(private val activity: Activity) {
 
 /** An app widget inside a launcher box. Tells the widget its real size so it lays itself out right. */
 @Composable
-fun AndroidWidget(host: WidgetHost, slot: Slot, modifier: Modifier, onMenu: () -> Unit) {
+fun AndroidWidget(host: WidgetHost, slot: Slot, modifier: Modifier, onMenu: (() -> Unit)?) {
     val info = host.manager.getAppWidgetInfo(slot.widgetId)
     val L = LocalLang.current
     TermBox(info?.let { host.label(it).lowercase() } ?: "widget", modifier, onLongClick = onMenu) {

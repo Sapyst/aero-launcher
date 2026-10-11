@@ -65,7 +65,7 @@ private val SAO_PAULO = ZoneId.of("America/Sao_Paulo")
 
 // ---------- clock: hours bright, minutes dimmer (like the desktop), numeric date, SP and local ----------
 @Composable
-fun ClockWidget(prefs: Prefs, modifier: Modifier, onMenu: () -> Unit) {
+fun ClockWidget(prefs: Prefs, modifier: Modifier, onMenu: (() -> Unit)?) {
     val pal = LocalPalette.current
     val seconds by prefs.seconds
     var now by remember { mutableStateOf(ZonedDateTime.now()) }
@@ -91,7 +91,7 @@ fun ClockWidget(prefs: Prefs, modifier: Modifier, onMenu: () -> Unit) {
 
 // ---------- weather: now + the next days in columns, a thin bar for each day's range ----------
 @Composable
-fun WeatherWidget(modifier: Modifier, onMenu: () -> Unit) {
+fun WeatherWidget(modifier: Modifier, onMenu: (() -> Unit)?) {
     val pal = LocalPalette.current
     var weather by remember { mutableStateOf<WeatherNow?>(null) }
     LaunchedEffect(Unit) {
@@ -164,7 +164,7 @@ fun rememberBattery(): State<BatteryInfo> {
 }
 
 @Composable
-fun BatteryWidget(modifier: Modifier, onMenu: () -> Unit) {
+fun BatteryWidget(modifier: Modifier, onMenu: (() -> Unit)?) {
     val pal = LocalPalette.current
     val b by rememberBattery()
     val L = LocalLang.current
@@ -197,7 +197,7 @@ private fun cpuClock(): Float? {
 private fun gib(bytes: Long) = "%.1f".format(bytes / 1073741824.0)
 
 @Composable
-fun ResourcesWidget(modifier: Modifier, onMenu: () -> Unit) {
+fun ResourcesWidget(modifier: Modifier, onMenu: (() -> Unit)?) {
     val ctx = LocalContext.current
     val pal = LocalPalette.current
     val battery by rememberBattery()
@@ -300,7 +300,7 @@ private fun NetCurve(down: List<Float>, up: List<Float>, modifier: Modifier) {
 
 // ---------- pinned apps ----------
 @Composable
-fun AppsWidget(repo: AppRepository, modifier: Modifier, onMenu: () -> Unit) {
+fun AppsWidget(repo: AppRepository, modifier: Modifier, onMenu: (() -> Unit)?) {
     val pal = LocalPalette.current
     val pinnedKeys by repo.pinned
     val all by repo.apps

@@ -71,7 +71,7 @@ fun fetchLines(ctx: Context, user: String, appCount: Int, battery: BatteryInfo?)
 
 
 @Composable
-fun FetchWidget(repo: AppRepository, prefs: Prefs, modifier: Modifier, onMenu: () -> Unit) {
+fun FetchWidget(repo: AppRepository, prefs: Prefs, modifier: Modifier, onMenu: (() -> Unit)?) {
     val ctx = LocalContext.current
     val pal = LocalPalette.current
     val user by prefs.fetchUser

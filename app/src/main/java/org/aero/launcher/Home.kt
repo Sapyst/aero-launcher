@@ -2,7 +2,6 @@ package org.aero.launcher
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,14 +35,32 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
 
 /**
  * The home screen: the background (the ASCII statue on OLED black, or the system wallpaper), the
  * chosen widgets (they scroll if there are many) and the `$` prompt.
  * Dragging DOWN when the widgets are at the top = notifications; dragging UP at the bottom = search.
- * Long press on empty space = launcher menu; long press on a widget = that widget's menu.
+ * Long press on empty space = launcher menu. Long press on a widget and DRAG = move it;
+ * long press and let go without moving = that widget's menu (width, remove).
  */
+/** Identity of a slot that survives reordering (drag & drop, remembered positions). */
+private val Slot.key get() = if (kind == Kind.ANDROID) "android:$widgetId" else kind.id
+
 @Composable
 fun Home(
     repo: AppRepository, prefs: Prefs, host: WidgetHost, art: AsciiArt, homePresses: Int,
@@ -56,7 +73,10 @@ fun Home(
     val background by prefs.background
     val shimmer by prefs.shimmer
     val slots by prefs.slots
-    val threshold = with(LocalDensity.current) { 70.dp.toPx() }
+    val density = LocalDensity.current
+    val threshold = with(density) { 70.dp.toPx() }
+    val edge = with(density) { 80.dp.toPx() }
+    val haptics = LocalHapticFeedback.current
     var menu by remember { mutableStateOf(false) }
     var slotMenu by remember { mutableStateOf<Int?>(null) }
     val scroll = rememberScrollState()
@@ -81,6 +101,100 @@ fun Home(
         }
     }
 
+    // ---------- drag & drop ----------
+    // Positions are kept in the CONTENT's coordinates (the scrolling column), which do not change
+    // when a widget moves in the list. The dragged widget is drawn shifted (graphicsLayer) so that
+    // it stays under the finger; the others take their new places as the list reorders live.
+    var order by remember { mutableStateOf(slots) }                  // what is shown (changes while dragging)
+    var dragKey by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(slots) { if (dragKey == null) order = slots }
+    val bounds = remember { mutableStateMapOf<String, Rect>() }      // each widget, in content coordinates
+    var content by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    var viewportHeight by remember { mutableFloatStateOf(0f) }
+    var grabTopLeft by remember { mutableStateOf(Offset.Zero) }      // the widget's top-left when grabbed
+    var fingerStart by remember { mutableStateOf(Offset.Zero) }      // finger (content) when grabbed
+    var fingerView by remember { mutableStateOf(Offset.Zero) }       // finger relative to the visible area
+    var moved by remember { mutableFloatStateOf(0f) }
+    fun finger() = Offset(fingerView.x, fingerView.y + scroll.value)  // finger in content coordinates
+
+    fun reorderUnderFinger() {
+        val key = dragKey ?: return
+        val f = finger()
+        val target = order.firstOrNull { it.key != key && bounds[it.key]?.contains(f) == true } ?: return
+        val from = order.indexOfFirst { it.key == key }
+        val to = order.indexOf(target)
+        if (from >= 0 && to >= 0 && from != to) order = order.toMutableList().apply { add(to, removeAt(from)) }
+    }
+    // dragging near the top or bottom edge scrolls by itself
+    LaunchedEffect(dragKey) {
+        while (dragKey != null) {
+            val step = when {
+                fingerView.y < edge -> -14f
+                fingerView.y > viewportHeight - edge -> 14f
+                else -> 0f
+            }
+            if (step != 0f && scroll.dispatchRawDelta(step) != 0f) reorderUnderFinger()
+            withFrameNanos { }
+        }
+    }
+    val dragGesture = Modifier.pointerInput(Unit) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val press = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture   // moved = normal scroll
+            val key = order.firstOrNull { bounds[it.key]?.contains(press.position) == true }?.key
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            press.consume()
+            if (key == null) {                                   // empty space: the launcher menu
+                menu = true
+            } else {
+                focus.clearFocus()
+                dragKey = key; moved = 0f
+                grabTopLeft = bounds[key]!!.topLeft
+                fingerStart = press.position
+                fingerView = Offset(press.position.x, press.position.y - scroll.value)
+            }
+            // From here on we take the touch FIRST (Initial pass), so the buttons inside the widget
+            // do not also react (a pinned app would open when you let go).
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                change.consume()
+                if (!change.pressed) break
+                if (dragKey != null) {
+                    moved += (change.position - change.previousPosition).getDistance()
+                    fingerView = Offset(change.position.x, change.position.y - scroll.value)
+                    reorderUnderFinger()
+                }
+            }
+            val dropped = dragKey
+            dragKey = null
+            if (dropped != null) {
+                if (moved < 12f) slotMenu = order.indexOfFirst { it.key == dropped }.takeIf { it >= 0 }
+                else prefs.setSlots(order)
+            }
+        }
+    }
+
+    /** One widget in the list: remembers where it is; follows the finger while dragged. */
+    @Composable
+    fun Placed(slot: Slot, modifier: Modifier) {
+        val dragged = dragKey == slot.key
+        Box(
+            modifier
+                .zIndex(if (dragged) 1f else 0f)
+                .onGloballyPositioned { c -> content?.takeIf { it.isAttached }?.let { bounds[slot.key] = it.localBoundingBoxOf(c) } }
+        ) {
+            SlotView(slot, repo, prefs, host, Modifier.fillMaxWidth().graphicsLayer {
+                if (dragKey == slot.key) {
+                    val base = bounds[slot.key]?.topLeft ?: grabTopLeft
+                    val shift = grabTopLeft + (finger() - fingerStart) - base
+                    translationX = shift.x; translationY = shift.y
+                    scaleX = 1.03f; scaleY = 1.03f; alpha = 0.92f
+                }
+            })
+        }
+    }
+
     Box(Modifier.fillMaxSize()) {
         if (background == "eris") AsciiBackground(art, shimmer)
         Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {      // imePadding: the keyboard pushes the home up (terminal)
@@ -88,9 +202,11 @@ fun Home(
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .onGloballyPositioned { viewportHeight = it.size.height.toFloat() }
                     .nestedScroll(edgePull)
                     .verticalScroll(scroll)
-                    .pointerInput(Unit) { detectTapGestures(onLongPress = { menu = true }) }
+                    .onGloballyPositioned { content = it }
+                    .then(dragGesture)
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
@@ -99,18 +215,18 @@ fun Home(
                     T(L("so the Home button and the swipe-up gesture come here", "pro botão Home e o gesto de deslizar virem pra cá"), 11.sp, pal.dim)
                 }
                 var i = 0
-                while (i < slots.size) {
-                    val s = slots[i]
-                    val a = i
-                    if (s.half && i + 1 < slots.size && slots[i + 1].half) {
-                        Row(Modifier.fillMaxWidth()) {
-                            SlotView(slots[a], repo, prefs, host, Modifier.weight(1f)) { slotMenu = a }
+                while (i < order.size) {
+                    val s = order[i]
+                    if (s.half && i + 1 < order.size && order[i + 1].half) {
+                        val pair = listOf(s, order[i + 1])
+                        Row(Modifier.fillMaxWidth().zIndex(if (pair.any { it.key == dragKey }) 1f else 0f)) {
+                            Placed(pair[0], Modifier.weight(1f))
                             Spacer(Modifier.width(10.dp))
-                            SlotView(slots[a + 1], repo, prefs, host, Modifier.weight(1f)) { slotMenu = a + 1 }
+                            Placed(pair[1], Modifier.weight(1f))
                         }
                         i += 2
                     } else {
-                        SlotView(s, repo, prefs, host, Modifier.fillMaxWidth()) { slotMenu = a }
+                        Placed(s, Modifier.fillMaxWidth().zIndex(if (s.key == dragKey) 1f else 0f))
                         i++
                     }
                 }
@@ -141,8 +257,6 @@ fun Home(
                 Menu(
                     s.kind.title(L),
                     listOf(
-                        L("move up", "subir") to { if (index > 0) prefs.setSlots(list.toMutableList().apply { add(index - 1, removeAt(index)) }) },
-                        L("move down", "descer") to { if (index < list.size - 1) prefs.setSlots(list.toMutableList().apply { add(index + 1, removeAt(index)) }) },
                         (if (s.half) L("full width", "largura inteira") else L("half width", "meia largura")) to { prefs.setSlots(list.toMutableList().apply { set(index, s.copy(half = !s.half)) }) },
                         L("remove", "remover") to {
                             if (s.kind == Kind.ANDROID) host.remove(s.widgetId)
@@ -157,17 +271,18 @@ fun Home(
     }
 }
 
+/** The widget itself. Long press / drag is handled by the home screen, so widgets get no menu of their own. */
 @Composable
-fun SlotView(slot: Slot, repo: AppRepository, prefs: Prefs, host: WidgetHost, modifier: Modifier, onMenu: () -> Unit) {
+fun SlotView(slot: Slot, repo: AppRepository, prefs: Prefs, host: WidgetHost, modifier: Modifier) {
     when (slot.kind) {
-        Kind.CLOCK -> ClockWidget(prefs, modifier, onMenu)
-        Kind.WEATHER -> WeatherWidget(modifier, onMenu)
-        Kind.APPS -> AppsWidget(repo, modifier, onMenu)
-        Kind.BATTERY -> BatteryWidget(modifier, onMenu)
-        Kind.RESOURCES -> ResourcesWidget(modifier, onMenu)
-        Kind.FETCH -> FetchWidget(repo, prefs, modifier, onMenu)
-        Kind.TERMINAL -> TerminalWidget(repo, prefs, modifier, onMenu)
-        Kind.ANDROID -> AndroidWidget(host, slot, modifier, onMenu)
+        Kind.CLOCK -> ClockWidget(prefs, modifier, null)
+        Kind.WEATHER -> WeatherWidget(modifier, null)
+        Kind.APPS -> AppsWidget(repo, modifier, null)
+        Kind.BATTERY -> BatteryWidget(modifier, null)
+        Kind.RESOURCES -> ResourcesWidget(modifier, null)
+        Kind.FETCH -> FetchWidget(repo, prefs, modifier, null)
+        Kind.TERMINAL -> TerminalWidget(repo, prefs, modifier, null)
+        Kind.ANDROID -> AndroidWidget(host, slot, modifier, null)
     }
 }
 

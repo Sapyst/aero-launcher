@@ -56,7 +56,7 @@ o resto roda no shell do Android, ex.:
   uname -a · getprop ro.product.model · df -h /data · date"""
 
 @Composable
-fun TerminalWidget(repo: AppRepository, prefs: Prefs, modifier: Modifier, onMenu: () -> Unit) {
+fun TerminalWidget(repo: AppRepository, prefs: Prefs, modifier: Modifier, onMenu: (() -> Unit)?) {
     val ctx = LocalContext.current
     val pal = LocalPalette.current
     val scope = rememberCoroutineScope()

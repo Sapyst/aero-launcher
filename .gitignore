@@ -1,0 +1,10 @@
+.gradle/
+build/
+app/build/
+local.properties
+*.apk
+dist/
+# the source photo of the statue belongs to its photographer: only the ASCII made from it is shared
+tools/*.webp
+tools/*.jpg
+tools/*.png

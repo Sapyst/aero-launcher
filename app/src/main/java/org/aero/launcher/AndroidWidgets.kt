@@ -9,8 +9,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.util.SizeF
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -89,15 +88,15 @@ class WidgetHost(private val activity: Activity) {
 
 /** An app widget inside a launcher box. Tells the widget its real size so it lays itself out right. */
 @Composable
-fun AndroidWidget(host: WidgetHost, slot: Slot, modifier: Modifier, onMenu: (() -> Unit)?) {
-    val info = host.manager.getAppWidgetInfo(slot.widgetId)
+fun AndroidWidget(host: WidgetHost, widgetId: Int, modifier: Modifier, onMenu: (() -> Unit)?) {
+    val info = host.manager.getAppWidgetInfo(widgetId)
     val L = LocalLang.current
     TermBox(info?.let { host.label(it).lowercase() } ?: "widget", modifier, onLongClick = onMenu) {
         if (info == null) { T(L("this widget is gone (app removed?)", "esse widget sumiu (app desinstalado?)"), 12.sp, LocalPalette.current.dim); return@TermBox }
         AndroidView(
             factory = { _ ->
                 var last = 0 to 0                             // only tell the widget when the size really changes
-                host.view(slot.widgetId)!!.apply {
+                host.view(widgetId)!!.apply {
                     addOnLayoutChangeListener { v, l, t, r, b, _, _, _, _ ->
                         val d = v.resources.displayMetrics.density
                         val w = (r - l) / d; val h = (b - t) / d
@@ -109,7 +108,7 @@ fun AndroidWidget(host: WidgetHost, slot: Slot, modifier: Modifier, onMenu: (() 
                     }
                 }
             },
-            modifier = Modifier.fillMaxWidth().height(slot.heightDp.dp),
+            modifier = Modifier.fillMaxSize(),             // the cells the widget takes on the home grid
         )
     }
 }

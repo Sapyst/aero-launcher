@@ -5,12 +5,12 @@ import androidx.compose.runtime.mutableStateOf
 
 /** The built-in widgets (the same family as the desktop's) plus any Android app widget. */
 enum class Kind(val id: String) { CLOCK("clock"), WEATHER("weather"), APPS("apps"), BATTERY("battery"),
-    RESOURCES("resources"), FETCH("fetch"), TERMINAL("terminal"), ANDROID("android") }
+    RESOURCES("resources"), FETCH("fetch"), TERMINAL("terminal"), ANDROID("android"), APP("app") }
 
 fun Kind.title(L: Lang) = when (this) {
     Kind.CLOCK -> L("clock", "relógio"); Kind.WEATHER -> L("weather", "clima"); Kind.APPS -> "apps"
     Kind.BATTERY -> L("battery", "bateria"); Kind.RESOURCES -> L("resources", "recursos"); Kind.FETCH -> "fetch"
-    Kind.TERMINAL -> "terminal"; Kind.ANDROID -> L("android widget", "widget android")
+    Kind.TERMINAL -> "terminal"; Kind.ANDROID -> L("android widget", "widget android"); Kind.APP -> "app"
 }
 fun Kind.about(L: Lang) = when (this) {
     Kind.CLOCK -> L("time, date, são paulo and local", "hora, data, são paulo e local")
@@ -21,10 +21,9 @@ fun Kind.about(L: Lang) = when (this) {
     Kind.FETCH -> L("fastfetch of this phone", "o fastfetch deste celular")
     Kind.TERMINAL -> L("a small shell", "um pequeno shell")
     Kind.ANDROID -> L("a widget from another app", "um widget de outro app")
+    Kind.APP -> ""
 }
 
-/** One place on the home screen. Two "half" slots in a row share the width. */
-data class Slot(val kind: Kind, val half: Boolean = false, val widgetId: Int = -1, val heightDp: Int = 180)
 
 /**
  * Launcher settings, saved in the app's preferences. Each value is also a Compose state, so the
@@ -40,7 +39,9 @@ class Prefs(ctx: Context) {
     val fetchUser = mutableStateOf(sp.getString("fetch_user", "aero")!!)
     val theme = mutableStateOf(sp.getString("theme", "system")!!)          // "system" | "dark" | "light"
     val lang = mutableStateOf(sp.getString("lang", "en")!!)                // "en" | "pt"
-    val slots = mutableStateOf(loadSlots())
+    val items = mutableStateOf(loadItems())                                 // what is on the home grid
+    val gridCols = mutableStateOf(sp.getInt("grid_cols", 4))
+    val gridRows = mutableStateOf(sp.getInt("grid_rows", 7))              // measured by the home screen
     /** We ask once, on the first start, to become the home screen; after that only the banner asks. */
     val askedHome get() = sp.getBoolean("asked_home", false)
     fun setAskedHome() = sp.edit().putBoolean("asked_home", true).apply()
@@ -53,19 +54,27 @@ class Prefs(ctx: Context) {
     fun setTheme(v: String) { theme.value = v; sp.edit().putString("theme", v).apply() }
     fun setLang(v: String) { lang.value = v; sp.edit().putString("lang", v).apply() }
 
-    fun setSlots(list: List<Slot>) {
-        slots.value = list
-        sp.edit().putString("slots", list.joinToString("\n") { "${it.kind.id}|${it.half}|${it.widgetId}|${it.heightDp}" }).apply()
+    fun setItems(list: List<Item>) {
+        items.value = list
+        sp.edit().putString("items", list.joinToString("\n") { it.encode() }).apply()
     }
+    fun setGridCols(v: Int) { gridCols.value = v; sp.edit().putInt("grid_cols", v).apply() }
+    fun setGridRows(v: Int) { gridRows.value = v; sp.edit().putInt("grid_rows", v).apply() }
 
-    private fun loadSlots(): List<Slot> {
-        val saved = sp.getString("slots", null)
-            ?: return listOf(Slot(Kind.CLOCK), Slot(Kind.WEATHER), Slot(Kind.APPS))   // a calm home by default
-        return saved.split("\n").mapNotNull { line ->
+    /** Adds to the home: page -1 = "not placed yet", the home puts it in the first free cells. */
+    fun addItem(item: Item) = setItems(items.value.filter { it.id != item.id } + item.copy(page = -1))
+
+    private fun loadItems(): List<Item> {
+        sp.getString("items", null)?.let { saved -> return saved.split("\n").mapNotNull(Item::decode) }
+        val cols = sp.getInt("grid_cols", 4)
+        // version 0.5 and before kept a list ("slots"): bring those widgets over, to be placed
+        val old = sp.getString("slots", null)?.split("\n")?.mapNotNull { line ->
             val p = line.split("|")
             val kind = Kind.entries.firstOrNull { it.id == p.getOrNull(0) } ?: return@mapNotNull null
-            Slot(kind, p.getOrNull(1) == "true", p.getOrNull(2)?.toIntOrNull() ?: -1, p.getOrNull(3)?.toIntOrNull() ?: 180)
-        }
+            val wid = p.getOrNull(2)?.toIntOrNull() ?: -1
+            if (kind == Kind.ANDROID) Item.android(wid, cols, 2) else Item.widget(kind, cols)
+        } ?: listOf(Kind.CLOCK, Kind.WEATHER).map { Item.widget(it, cols) }   // a calm home by default: room for app icons
+        return old.map { it.copy(page = -1) }
     }
 }
 

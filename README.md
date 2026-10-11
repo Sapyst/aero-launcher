@@ -19,8 +19,14 @@ the widgets of the *Arch Aero OS* desktop (Hyprland) it was made alongside.
   - **any Android app widget** (music, calendar, notes…), hosted inside a box
 - **Background**: the ASCII statue on true black (pixels off on OLED), with an optional subtle
   "live terminal" shimmer, or the system wallpaper.
-- **Gestures**: drag down = notifications, drag up = search. **Long press a widget and drag it** to move it
-  (the list scrolls by itself at the edges); long press and let go = its menu; long press on empty space = launcher menu.
+- **Home grid** like Android's own launchers: pages side by side, 4 or 5 columns. Long press anything and
+  drag it: an outline shows the cells where it will land and it snaps there ("magnet"); hold it at the
+  side edge to change page; drop it on *remove* / *app info* / *uninstall* at the top. Long press and let
+  go = its menu (resize widgets, remove). Long press an app in the list and drag it onto the home.
+- **Black-and-white icons, automatically** (also for apps installed later): apps with an Android 13+
+  monochrome icon get it on a round plate; the others are desaturated (and inverted when too bright
+  for the dark theme).
+- **Gestures**: drag down = notifications, drag up = app list.
 - **Search**: live filter (`ffx` finds Firefox), Enter opens the first match, `web <text>` or no
   match = your default browser with the engine you pick (Google, DuckDuckGo, Startpage, Bing).
 - Long press an app: pin to home, app info, uninstall.

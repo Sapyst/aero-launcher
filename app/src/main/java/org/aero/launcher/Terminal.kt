@@ -20,7 +20,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
@@ -65,6 +69,11 @@ fun TerminalWidget(repo: AppRepository, prefs: Prefs, modifier: Modifier, onMenu
     var input by remember { mutableStateOf("") }
     val scroll = rememberScrollState()
     val battery by rememberBattery()
+    val imeTarget = LocalImeTarget.current
+    var fieldBottom by remember { mutableStateOf(0f) }
+    var focused by remember { mutableStateOf(false) }
+    // while typing, tell the home where we are, so it lifts us above the keyboard
+    LaunchedEffect(focused, fieldBottom) { imeTarget.bottom = if (focused) fieldBottom else 0f }
     LaunchedEffect(out.size) { scroll.animateScrollTo(scroll.maxValue) }
 
     fun print(text: String) { text.trimEnd().lines().forEach { out.add(it) }; while (out.size > 300) out.removeAt(0) }
@@ -101,7 +110,7 @@ fun TerminalWidget(repo: AppRepository, prefs: Prefs, modifier: Modifier, onMenu
     }
 
     TermBox("terminal", modifier, onLongClick = onMenu) {
-        Box(Modifier.fillMaxWidth().height(170.dp)) {
+        Box(Modifier.fillMaxWidth().weight(1f, fill = true).heightIn(min = 60.dp)) {
             Column(Modifier.verticalScroll(scroll)) { out.forEach { T(it, 11.sp, if (it.startsWith("$ ")) pal.fg else pal.dim) } }
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -114,7 +123,9 @@ fun TerminalWidget(repo: AppRepository, prefs: Prefs, modifier: Modifier, onMenu
                 cursorBrush = SolidColor(pal.fg),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send, autoCorrectEnabled = false),
                 keyboardActions = KeyboardActions(onSend = { run(input); input = "" }),
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f)
+                    .onFocusChanged { focused = it.isFocused }
+                    .onGloballyPositioned { fieldBottom = it.boundsInWindow().bottom },
             )
         }
     }

@@ -26,6 +26,7 @@ class AppRepository(private val ctx: Context) {
     private val prefs = ctx.getSharedPreferences("aero", Context.MODE_PRIVATE)
 
     val apps = mutableStateOf<List<App>>(emptyList())
+    private val infos = HashMap<String, android.content.pm.LauncherActivityInfo>()
     val pinned = mutableStateOf(prefs.getString("pinned", "")!!.split("\n").filter { it.isNotBlank() })
 
     init {
@@ -40,9 +41,12 @@ class AppRepository(private val ctx: Context) {
     }
 
     fun reload() {
+        infos.clear()
         apps.value = users.userProfiles.flatMap { user ->
             val serial = users.getSerialNumberForUser(user)
-            launcherApps.getActivityList(null, user).map { App(it.label.toString(), it.componentName, user, serial) }
+            launcherApps.getActivityList(null, user).map { info ->
+                App(info.label.toString(), info.componentName, user, serial).also { infos[it.key] = info }
+            }
         }.filter { it.component.packageName != ctx.packageName }
             .sortedBy { it.label.lowercase() }
     }
@@ -57,6 +61,11 @@ class AppRepository(private val ctx: Context) {
         ctx.startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:${app.component.packageName}"))
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
+
+    /** The app's own icon (the colour one: IconCache turns it black and white). */
+    fun icon(app: App): android.graphics.drawable.Drawable? = runCatching { infos[app.key]?.getIcon(0) }.getOrNull()
+
+    fun byKey(key: String): App? = apps.value.firstOrNull { it.key == key }
 
     fun isPinned(app: App) = app.key in pinned.value
     fun togglePin(app: App) {

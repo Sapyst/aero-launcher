@@ -22,6 +22,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -118,26 +119,35 @@ fun Launcher(
 ) {
     val activity = LocalContext.current as Activity
     val background by prefs.background
+    val ctx = LocalContext.current
+    val icons = remember { IconCache(ctx, repo) }
+    val drag = remember { DragState() }
+    val imeTarget = remember { ImeTarget() }
+    val apps by repo.apps
+    LaunchedEffect(apps) { icons.clear() }                 // an app was installed/updated: redraw its icon
     var searching by remember { mutableStateOf(false) }
     var settings by remember { mutableStateOf(false) }
+    var listDrag by remember { mutableStateOf(false) }     // an app is being dragged out of the list
     LaunchedEffect(homePresses) { searching = false; settings = false }
+    LaunchedEffect(drag.active) { if (!drag.active && listDrag) { listDrag = false; searching = false } }
     BackHandler(enabled = searching || settings) { searching = false; settings = false }
     // drawing our own OLED background: tell Android not to render the wallpaper under it at all
     LaunchedEffect(background) {
         if (background == "eris") activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
         else activity.window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
     }
-    Box(Modifier.fillMaxSize()) {
-        Home(repo, prefs, widgets, art, homePresses, isDefault, onMakeDefault, onOpenSearch = { searching = true }, onOpenSettings = { settings = true })
+    CompositionLocalProvider(LocalImeTarget provides imeTarget) { Box(Modifier.fillMaxSize()) {
+        Home(repo, prefs, widgets, art, icons, drag, homePresses, isDefault, onMakeDefault,
+            onOpenSearch = { searching = true }, onOpenSettings = { settings = true })
         AnimatedVisibility(
             visible = searching,
             enter = slideInVertically { it / 4 } + fadeIn(),
             exit = slideOutVertically { it / 4 } + fadeOut(),
         ) {
-            SearchPanel(repo, prefs, onClose = { searching = false })
+            SearchPanel(repo, prefs, icons, drag, hidden = listDrag, onDragOut = { listDrag = true }, onClose = { searching = false })
         }
         AnimatedVisibility(visible = settings, enter = fadeIn(), exit = fadeOut()) {
             SettingsPanel(prefs, widgets, isDefault, onMakeDefault, onClose = { settings = false })
         }
-    }
+    } }
 }

@@ -40,6 +40,18 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 
 /**
  * Swipe up: the search. Typing filters the apps live; Enter opens the first one (or searches the
@@ -48,7 +60,10 @@ import androidx.compose.ui.unit.sp
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SearchPanel(repo: AppRepository, prefs: Prefs, onClose: () -> Unit) {
+fun SearchPanel(
+    repo: AppRepository, prefs: Prefs, icons: IconCache, drag: DragState,
+    hidden: Boolean, onDragOut: () -> Unit, onClose: () -> Unit,
+) {
     val ctx = LocalContext.current
     val pal = LocalPalette.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -76,7 +91,14 @@ fun SearchPanel(repo: AppRepository, prefs: Prefs, onClose: () -> Unit) {
         }
     }
 
-    Box(Modifier.fillMaxSize().background(pal.scrim)) {
+    // while an app is being dragged out to the home, the list stays (it still owns the finger) but invisible
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    // dragging an app out: keyboard away first, then the home shows up under the finger
+    val dragOut = { keyboard?.hide(); focusManager.clearFocus(); onDragOut() }
+    fun row(app: App, highlighted: Boolean): @Composable () -> Unit = {
+        AppRow(app, highlighted, icons, drag, { open(app) }, { menuFor = app }, dragOut)
+    }
+    Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (hidden) 0f else 1f }.background(pal.scrim)) {
         Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
             TermBox(L("search", "busca"), Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -108,13 +130,13 @@ fun SearchPanel(repo: AppRepository, prefs: Prefs, onClose: () -> Unit) {
                                 T("── ${first.lowercaseChar()} " + "─".repeat(24), 12.sp, pal.dim, Modifier.padding(top = 10.dp, bottom = 2.dp), maxLines = 1)
                             }
                         }
-                        item(key = app.key) { AppRow(app, false, { open(app) }, { menuFor = app }) }
+                        item(key = app.key) { row(app, false)() }
                     }
                 } else {
                     item {
                         TermBox("apps · ${results.size}", Modifier.fillMaxWidth().padding(top = 8.dp)) {
                             if (results.isEmpty()) T(L("no app matches", "nenhum app encontrado"), 14.sp, pal.dim)
-                            results.take(12).forEachIndexed { i, app -> AppRow(app, i == 0, { open(app) }, { menuFor = app }) }
+                            results.take(12).forEachIndexed { i, app -> row(app, i == 0)() }
                         }
                     }
                     item {
@@ -129,7 +151,8 @@ fun SearchPanel(repo: AppRepository, prefs: Prefs, onClose: () -> Unit) {
             Menu(
                 app.label,
                 listOf(
-                    (if (repo.isPinned(app)) L("unpin from home", "tirar da home") else L("pin to home", "fixar na home")) to { repo.togglePin(app) },
+                    L("add to home", "adicionar à home") to { prefs.addItem(Item.app(app)) },
+                    (if (repo.isPinned(app)) L("unpin from the apps widget", "tirar do widget apps") else L("pin to the apps widget", "fixar no widget apps")) to { repo.togglePin(app) },
                     L("app info", "informações do app") to { repo.openInfo(app) },
                     L("uninstall", "desinstalar") to { repo.uninstall(app) },
                 ),
@@ -139,16 +162,56 @@ fun SearchPanel(repo: AppRepository, prefs: Prefs, onClose: () -> Unit) {
     }
 }
 
-/** "> name" — the first search result is highlighted (that is what Enter opens). */
-@OptIn(ExperimentalFoundationApi::class)
+/**
+ * One app in the list: black-and-white icon + name; the first search result is highlighted (that is
+ * what Enter opens). Tap = open. Long press and DRAG = take it to the home screen (the list hides,
+ * the icon follows the finger and snaps to the home grid). Long press and let go = its menu.
+ */
 @Composable
-fun AppRow(app: App, highlighted: Boolean, onOpen: () -> Unit, onMenu: () -> Unit) {
+fun AppRow(
+    app: App, highlighted: Boolean, icons: IconCache, drag: DragState,
+    onOpen: () -> Unit, onMenu: () -> Unit, onDragOut: () -> Unit,
+) {
     val pal = LocalPalette.current
-    val mod = Modifier.fillMaxWidth().combinedClickable(onClick = onOpen, onLongClick = onMenu).padding(vertical = 7.dp)
-    Box(mod) {
+    val haptics = LocalHapticFeedback.current
+    var coords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    val gesture = Modifier.pointerInput(app.key) {
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            val press = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture   // tap or scroll: not ours
+            press.consume()
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            fun window(p: Offset) = coords?.takeIf { it.isAttached }?.localToWindow(p) ?: p
+            drag.isNew = true
+            drag.moved = 0f
+            drag.grab = drag.cell / 2f
+            drag.finger = window(press.position)
+            drag.item = Item.app(app)
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Initial)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                change.consume()
+                if (!change.pressed) break
+                drag.moved += (change.position - change.previousPosition).getDistance()
+                if (drag.moved > 24f) onDragOut()                    // really dragging: show the home
+                drag.finger = window(change.position)
+            }
+            if (drag.moved > 24f) drag.onRelease() else { drag.item = null; onMenu() }
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth()
+            .onGloballyPositioned { coords = it }
+            .clickable(onClick = onOpen)
+            .then(gesture)
+            .padding(vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MonoIcon(icons, app, 30.dp)
+        Spacer(Modifier.width(12.dp))
         if (highlighted)
-            T(" > ${app.label} ", 15.sp, pal.fill.copy(alpha = 1f), Modifier.background(pal.fg, RoundedCornerShape(3.dp)), maxLines = 1)
+            T(" ${app.label} ", 15.sp, pal.fill.copy(alpha = 1f), Modifier.background(pal.fg, RoundedCornerShape(3.dp)), maxLines = 1)
         else
-            T("> ${app.label}", 15.sp, pal.fg, maxLines = 1)
+            T(app.label, 15.sp, pal.fg, maxLines = 1)
     }
 }

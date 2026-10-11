@@ -37,10 +37,10 @@ fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefa
     val ctx = androidx.compose.ui.platform.LocalContext.current
     val L = LocalLang.current
     val pal = LocalPalette.current
-    val slots by prefs.slots
+    val items by prefs.items
+    val cols by prefs.gridCols
     var picking by remember { mutableStateOf(false) }
 
-    fun update(f: MutableList<Slot>.() -> Unit) = prefs.setSlots(slots.toMutableList().apply(f))
 
     Box(Modifier.fillMaxSize().background(pal.scrim)) {
         LazyColumn(
@@ -72,37 +72,36 @@ fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefa
                     T(L("language", "idioma"), 12.sp, pal.dim, Modifier.padding(top = 8.dp))
                     Choice("english", lang == "en") { prefs.setLang("en") }
                     Choice("português", lang == "pt") { prefs.setLang("pt") }
+                    T(L("home grid", "grade da home"), 12.sp, pal.dim, Modifier.padding(top = 8.dp))
+                    Choice(L("4 columns", "4 colunas"), cols == 4) { prefs.setGridCols(4) }
+                    Choice(L("5 columns", "5 colunas"), cols == 5) { prefs.setGridCols(5) }
                 }
             }
             item {
-                TermBox(L("home widgets · ${slots.size}", "widgets da home · ${slots.size}"), Modifier.fillMaxWidth()) {
-                    if (slots.isEmpty()) T(L("nothing on the home screen: add something below", "nada na home: adicione algo abaixo"), 12.sp, pal.dim)
-                    slots.forEachIndexed { i, s ->
+                val widgets = items.filter { it.kind != Kind.APP }.sortedWith(compareBy({ it.page }, { it.y }, { it.x }))
+                TermBox(L("home widgets · ${widgets.size}", "widgets da home · ${widgets.size}"), Modifier.fillMaxWidth()) {
+                    if (widgets.isEmpty()) T(L("no widgets on the home screen: add one below", "nenhum widget na home: adicione abaixo"), 12.sp, pal.dim)
+                    widgets.forEach { w ->
                         Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                            val name = if (s.kind == Kind.ANDROID)
-                                host.manager.getAppWidgetInfo(s.widgetId)?.let { host.label(it).lowercase() } ?: "widget (gone)"
-                            else s.kind.title(L)
-                            T("${i + 1}. $name", 14.sp, modifier = Modifier.weight(1f), maxLines = 1)
-                            Btn("↑") { if (i > 0) update { add(i - 1, removeAt(i)) } }
-                            Btn("↓") { if (i < slots.size - 1) update { add(i + 1, removeAt(i)) } }
-                            Btn(if (s.half) "½" else "1") { update { set(i, s.copy(half = !s.half)) } }
-                            if (s.kind == Kind.ANDROID) {
-                                Btn("−") { update { set(i, s.copy(heightDp = (s.heightDp - 30).coerceAtLeast(60))) } }
-                                Btn("+") { update { set(i, s.copy(heightDp = (s.heightDp + 30).coerceAtMost(600))) } }
-                            }
+                            val name = if (w.kind == Kind.ANDROID)
+                                host.manager.getAppWidgetInfo(w.widgetId)?.let { host.label(it).lowercase() } ?: "widget (gone)"
+                            else w.kind.title(L)
+                            T(name, 14.sp, modifier = Modifier.weight(1f), maxLines = 1)
+                            T(L("page", "pág.") + " ${w.page + 1} · ${w.w}×${w.h}", 11.sp, pal.dim)
                             Btn("×") {
-                                if (s.kind == Kind.ANDROID) host.remove(s.widgetId)
-                                update { removeAt(i) }
+                                if (w.kind == Kind.ANDROID) host.remove(w.widgetId)
+                                prefs.setItems(items.filter { it.id != w.id })
                             }
                         }
                     }
-                    T(L("↑↓ order · ½/1 half or full width (two halves share a row) · × remove", "↑↓ ordem · ½/1 meia ou inteira (duas metades dividem a linha) · × remove"), 11.sp, pal.dim, Modifier.padding(top = 4.dp))
+                    T(L("on the home: long press + drag to move · long press = resize / remove",
+                        "na home: segure + arraste pra mover · segure = tamanho / remover"), 11.sp, pal.dim, Modifier.padding(top = 4.dp))
                 }
             }
             item {
                 TermBox(L("add a widget", "adicionar widget"), Modifier.fillMaxWidth()) {
-                    Kind.entries.filter { it != Kind.ANDROID && slots.none { s -> s.kind == it } }.forEach { k ->
-                        Column(Modifier.fillMaxWidth().clickable { update { add(Slot(k)) } }.padding(vertical = 6.dp)) {
+                    Kind.entries.filter { it != Kind.ANDROID && it != Kind.APP && items.none { s -> s.kind == it } }.forEach { k ->
+                        Column(Modifier.fillMaxWidth().clickable { prefs.addItem(Item.widget(k, cols)) }.padding(vertical = 6.dp)) {
                             T("> ${k.title(L)}", 15.sp)
                             T("  ${k.about(L)}", 11.sp, pal.dim)
                         }
@@ -163,8 +162,13 @@ fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefa
         if (picking) WidgetPicker(host, onPick = { info ->
             picking = false
             host.add(info) { id, picked ->
-                val minH = (picked.minHeight / host.density()).toInt().coerceIn(80, 400)
-                prefs.setSlots(prefs.slots.value + Slot(Kind.ANDROID, widgetId = id, heightDp = minH + 20))
+                // its size in cells: what the widget asks for (Android 12+), else from its minimum size
+                val cell = 80 * host.density()
+                val w = if (android.os.Build.VERSION.SDK_INT >= 31 && picked.targetCellWidth > 0) picked.targetCellWidth
+                        else Math.ceil(picked.minWidth / cell.toDouble()).toInt()
+                val h = if (android.os.Build.VERSION.SDK_INT >= 31 && picked.targetCellHeight > 0) picked.targetCellHeight
+                        else Math.ceil(picked.minHeight / cell.toDouble()).toInt()
+                prefs.addItem(Item.android(id, w.coerceIn(1, prefs.gridCols.value), h.coerceIn(1, 4)))
             }
         }, onClose = { picking = false })
     }

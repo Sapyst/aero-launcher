@@ -78,10 +78,16 @@ fun ClockWidget(prefs: Prefs, modifier: Modifier, onMenu: (() -> Unit)?) {
     val L = LocalLang.current
     val weekMonth = remember(L.locale) { DateTimeFormatter.ofPattern("EEEE · MMMM", L.locale) }   // "sunday · october" / "domingo · outubro"
     TermBox(Kind.CLOCK.title(L), modifier, onLongClick = onMenu) {
-        Row(verticalAlignment = Alignment.Bottom) {
-            T(now.format(HH), 62.sp)
-            T(now.format(MM), 62.sp, pal.dim)
-            if (seconds) T(now.format(SS), 26.sp, pal.dim, Modifier.padding(bottom = 9.dp))
+        // the digits take the size the box allows: "HH:MM" (+ ":ss" smaller) must fit its width
+        androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val chars = 5 * 0.6f + if (seconds) 3 * 0.6f * 0.42f else 0f
+            val big = with(androidx.compose.ui.platform.LocalDensity.current) { (maxWidth.toPx() * 0.92f / chars).toSp() }   // 8% spare
+            val size = if (big.value < 62f) big else 62.sp
+            Row(verticalAlignment = Alignment.Bottom) {
+                T(now.format(HH), size, maxLines = 1)
+                T(now.format(MM), size, pal.dim, maxLines = 1)
+                if (seconds) T(now.format(SS), size * 0.42f, pal.dim, Modifier.padding(bottom = (size.value * 0.14f).dp), maxLines = 1)
+            }
         }
         T("${now.format(NUMDATE)} · ${now.format(weekMonth).lowercase()}", 13.sp, pal.fg)
         val sp = now.withZoneSameInstant(SAO_PAULO)
@@ -308,7 +314,7 @@ fun AppsWidget(repo: AppRepository, modifier: Modifier, onMenu: (() -> Unit)?) {
     val L = LocalLang.current
     TermBox(Kind.APPS.title(L), modifier, onLongClick = onMenu) {
         if (apps.isEmpty()) {
-            T(L("swipe up, long-press an app, \"pin to home\"", "deslize pra cima, segure um app, \"fixar na home\""), 12.sp, pal.dim)
+            T("—", 12.sp, pal.dim)
         } else {
             apps.chunked(2).forEach { row ->
                 Row(Modifier.fillMaxWidth()) {

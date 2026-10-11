@@ -98,7 +98,7 @@ fun SearchPanel(
     fun row(app: App, highlighted: Boolean): @Composable () -> Unit = {
         AppRow(app, highlighted, icons, drag, { open(app) }, { menuFor = app }, dragOut)
     }
-    Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (hidden) 0f else 1f }.background(pal.scrim)) {
+    Box(Modifier.fillMaxSize().graphicsLayer { alpha = if (hidden) 0f else 1f }.glassScrim()) {
         Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
             TermBox(L("search", "busca"), Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -107,7 +107,7 @@ fun SearchPanel(
                         value = query,
                         onValueChange = { query = it },
                         singleLine = true,
-                        textStyle = TextStyle(fontFamily = Mono, fontSize = 18.sp, color = pal.fg),
+                        textStyle = TextStyle(fontFamily = LocalFont.current, fontSize = 18.sp, color = pal.fg),
                         cursorBrush = SolidColor(pal.fg),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                         keyboardActions = KeyboardActions(onGo = {

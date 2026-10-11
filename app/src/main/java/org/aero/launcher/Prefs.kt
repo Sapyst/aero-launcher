@@ -41,7 +41,15 @@ class Prefs(ctx: Context) {
     val lang = mutableStateOf(sp.getString("lang", "en")!!)                // "en" | "pt"
     val items = mutableStateOf(loadItems())                                 // what is on the home grid
     val gridCols = mutableStateOf(sp.getInt("grid_cols", 4))
-    val gridRows = mutableStateOf(sp.getInt("grid_rows", 7))              // measured by the home screen
+    val gridRows = mutableStateOf(sp.getInt("grid_rows", 7))              // rows in use (measured or chosen)
+    val rowsManual = mutableStateOf(sp.getInt("rows_manual", 0))          // 0 = as many as fit the screen
+    val pages = mutableStateOf(sp.getInt("pages", 1))                     // workspaces, empty ones too
+    val opacity = mutableStateOf(sp.getFloat("opacity", 0.78f))           // boxes: 1 = solid
+    val blur = mutableStateOf(sp.getBoolean("blur", true))                // frosted glass behind boxes and panels
+    val font = mutableStateOf(sp.getString("font", "jetbrains")!!)
+    val textScale = mutableStateOf(sp.getFloat("text_scale", 1f))
+    val iconScale = mutableStateOf(sp.getFloat("icon_scale", 1f))
+    val showPrompt = mutableStateOf(sp.getBoolean("show_prompt", true))
     /** We ask once, on the first start, to become the home screen; after that only the banner asks. */
     val askedHome get() = sp.getBoolean("asked_home", false)
     fun setAskedHome() = sp.edit().putBoolean("asked_home", true).apply()
@@ -60,6 +68,14 @@ class Prefs(ctx: Context) {
     }
     fun setGridCols(v: Int) { gridCols.value = v; sp.edit().putInt("grid_cols", v).apply() }
     fun setGridRows(v: Int) { gridRows.value = v; sp.edit().putInt("grid_rows", v).apply() }
+    fun setRowsManual(v: Int) { rowsManual.value = v; sp.edit().putInt("rows_manual", v).apply() }
+    fun setPages(v: Int) { pages.value = v.coerceAtLeast(1); sp.edit().putInt("pages", pages.value).apply() }
+    fun setOpacity(v: Float) { opacity.value = v; sp.edit().putFloat("opacity", v).apply() }
+    fun setBlur(v: Boolean) { blur.value = v; sp.edit().putBoolean("blur", v).apply() }
+    fun setFont(v: String) { font.value = v; sp.edit().putString("font", v).apply() }
+    fun setTextScale(v: Float) { textScale.value = v; sp.edit().putFloat("text_scale", v).apply() }
+    fun setIconScale(v: Float) { iconScale.value = v; sp.edit().putFloat("icon_scale", v).apply() }
+    fun setShowPrompt(v: Boolean) { showPrompt.value = v; sp.edit().putBoolean("show_prompt", v).apply() }
 
     /** Adds to the home: page -1 = "not placed yet", the home puts it in the first free cells. */
     fun addItem(item: Item) = setItems(items.value.filter { it.id != item.id } + item.copy(page = -1))

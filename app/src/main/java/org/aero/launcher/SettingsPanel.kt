@@ -27,6 +27,13 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.Canvas
 
 /**
  * The launcher's own settings (long press on the home screen → launcher settings):
@@ -42,7 +49,7 @@ fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefa
     var picking by remember { mutableStateOf(false) }
 
 
-    Box(Modifier.fillMaxSize().background(pal.scrim)) {
+    Box(Modifier.fillMaxSize().glassScrim()) {
         LazyColumn(
             Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -72,9 +79,40 @@ fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefa
                     T(L("language", "idioma"), 12.sp, pal.dim, Modifier.padding(top = 8.dp))
                     Choice("english", lang == "en") { prefs.setLang("en") }
                     Choice("português", lang == "pt") { prefs.setLang("pt") }
-                    T(L("home grid", "grade da home"), 12.sp, pal.dim, Modifier.padding(top = 8.dp))
-                    Choice(L("4 columns", "4 colunas"), cols == 4) { prefs.setGridCols(4) }
-                    Choice(L("5 columns", "5 colunas"), cols == 5) { prefs.setGridCols(5) }
+                }
+            }
+            item {
+                val opacity by prefs.opacity
+                val blur by prefs.blur
+                val font by prefs.font
+                val textScale by prefs.textScale
+                val iconScale by prefs.iconScale
+                TermBox(L("look", "visual"), Modifier.fillMaxWidth()) {
+                    Slider(L("box opacity", "opacidade das caixas"), opacity, 0.15f..1f, 0.05f, { "${(it * 100).roundToInt()}%" }) { prefs.setOpacity(it) }
+                    Toggle(L("frosted glass (blur what is behind)", "vidro fosco (desfoca o que está atrás)"), blur) { prefs.setBlur(!blur) }
+                    T(L("font", "fonte"), 12.sp, pal.dim, Modifier.padding(top = 8.dp))
+                    listOf("jetbrains" to "jetbrains mono", "monospace" to L("system mono", "mono do sistema"),
+                        "sans" to L("system sans", "sans do sistema"), "serif" to "serif").forEach { (id, name) ->
+                        Choice(name, font == id) { prefs.setFont(id) }
+                    }
+                    Slider(L("text size", "tamanho do texto"), textScale, 0.75f..1.4f, 0.05f, { "${(it * 100).roundToInt()}%" }) { prefs.setTextScale(it) }
+                    Slider(L("icon size", "tamanho dos ícones"), iconScale, 0.6f..1.5f, 0.05f, { "${(it * 100).roundToInt()}%" }) { prefs.setIconScale(it) }
+                }
+            }
+            item {
+                val rowsManual by prefs.rowsManual
+                val rowsNow by prefs.gridRows
+                val pages by prefs.pages
+                val showPrompt by prefs.showPrompt
+                TermBox(L("home grid", "grade da home"), Modifier.fillMaxWidth()) {
+                    Slider(L("columns", "colunas"), cols.toFloat(), 3f..6f, 1f, { it.roundToInt().toString() }) { prefs.setGridCols(it.roundToInt()) }
+                    Toggle(L("rows: as many as fit", "linhas: quantas couberem"), rowsManual == 0) {
+                        prefs.setRowsManual(if (rowsManual == 0) rowsNow else 0)
+                    }
+                    if (rowsManual > 0) Slider(L("rows", "linhas"), rowsManual.toFloat(), 3f..12f, 1f, { it.roundToInt().toString() }) { prefs.setRowsManual(it.roundToInt()) }
+                    T(L("workspaces: $pages · long press an empty spot on the home for new / delete",
+                        "áreas de trabalho: $pages · segure um espaço vazio na home pra criar / apagar"), 11.sp, pal.dim, Modifier.padding(vertical = 6.dp))
+                    Toggle(L("show the \$ bar", "mostrar a barra \$"), showPrompt) { prefs.setShowPrompt(!showPrompt) }
                 }
             }
             item {
@@ -143,7 +181,7 @@ fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefa
                             value = user,
                             onValueChange = { prefs.setFetchUser(it.filter { c -> !c.isWhitespace() }.take(20)) },
                             singleLine = true,
-                            textStyle = TextStyle(fontFamily = Mono, fontSize = 14.sp, color = pal.fg),
+                            textStyle = TextStyle(fontFamily = LocalFont.current, fontSize = 14.sp, color = pal.fg),
                             cursorBrush = SolidColor(pal.fg),
                             modifier = Modifier.weight(1f),
                         )
@@ -178,7 +216,7 @@ fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefa
 private fun WidgetPicker(host: WidgetHost, onPick: (AppWidgetProviderInfo) -> Unit, onClose: () -> Unit) {
     val pal = LocalPalette.current
     val providers = remember { host.providers() }
-    Box(Modifier.fillMaxSize().background(pal.scrim)) {
+    Box(Modifier.fillMaxSize().glassScrim()) {
         LazyColumn(Modifier.fillMaxSize().systemBarsPadding().padding(horizontal = 16.dp)) {
             item {
                 Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
@@ -220,4 +258,42 @@ private fun Toggle(text: String, on: Boolean, onClick: () -> Unit) {
     val pal = LocalPalette.current
     T((if (on) "[x] " else "[ ] ") + text, 14.sp, if (on) pal.fg else pal.dim,
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 7.dp))
+}
+
+/** A slider drawn like the rest: a thin line, the filled part bright, a round knob. Drag or tap. */
+@Composable
+private fun Slider(label: String, value: Float, range: ClosedFloatingPointRange<Float>, step: Float,
+                   format: (Float) -> String, onChange: (Float) -> Unit) {
+    val pal = LocalPalette.current
+    Row(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+        T(label, 13.sp, pal.fg, Modifier.weight(1f))
+        T(format(value), 13.sp, pal.dim)
+    }
+    Canvas(
+        Modifier.fillMaxWidth().height(30.dp).pointerInput(range, step) {
+            fun pick(x: Float) {
+                val f = (x / size.width).coerceIn(0f, 1f)
+                val raw = range.start + f * (range.endInclusive - range.start)
+                onChange(((raw / step).roundToInt() * step).coerceIn(range.start, range.endInclusive))
+            }
+            awaitEachGesture {
+                val down = awaitFirstDown()
+                down.consume(); pick(down.position.x)
+                while (true) {
+                    val e = awaitPointerEvent()
+                    val c = e.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!c.pressed) break
+                    c.consume(); pick(c.position.x)
+                }
+            }
+        }
+    ) {
+        val f = ((value - range.start) / (range.endInclusive - range.start)).coerceIn(0f, 1f)
+        val y = size.height / 2
+        val r = 7.dp.toPx()
+        drawLine(pal.line, Offset(r, y), Offset(size.width - r, y), 2.dp.toPx())
+        drawLine(pal.fg, Offset(r, y), Offset(r + f * (size.width - 2 * r), y), 2.dp.toPx())
+        drawCircle(pal.bg, r, Offset(r + f * (size.width - 2 * r), y))
+        drawCircle(pal.fg, r, Offset(r + f * (size.width - 2 * r), y), style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx()))
+    }
 }

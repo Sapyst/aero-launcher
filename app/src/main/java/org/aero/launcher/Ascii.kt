@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
@@ -44,6 +45,67 @@ class AsciiArt(val cols: Int, val rows: Int, val chars: List<String>, val levels
 
 private const val SHIMMER = ".:-=+*#%@"
 
+/** Where the statue goes on a screen of this size: 70% of the height, centred, above the bottom bar. */
+private class AsciiLayout(art: AsciiArt, width: Float, height: Float, bottomGap: Float) {
+    val cellH = height * 0.70f / art.rows
+    val cellW = cellH / 2
+    val left = (width - cellW * art.cols) / 2
+    val top = height - bottomGap - cellH * art.rows
+}
+
+/** Draws the whole statue on [canvas] (used full size for the background, small for the blurred glass). */
+private fun drawAscii(canvas: android.graphics.Canvas, art: AsciiArt, w: Float, h: Float, bottomGap: Float,
+                      typeface: android.graphics.Typeface?, fg: Int, bg: Int): AsciiLayout {
+    val lay = AsciiLayout(art, w, h, bottomGap)
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.typeface = typeface; textSize = lay.cellW / 0.6f; color = fg }
+    val baseline = (lay.cellH - paint.textSize) / 2 - paint.fontMetrics.ascent
+    canvas.drawColor(bg)
+    for (r in 0 until art.rows) for (col in 0 until art.cols) {
+        val ch = art.chars[r][col]
+        if (ch == ' ') continue
+        paint.alpha = (25 + (art.levels[r][col] - '0') * 25).coerceAtMost(255)
+        canvas.drawText(ch.toString(), lay.left + col * lay.cellW, lay.top + r * lay.cellH + baseline, paint)
+    }
+    return lay
+}
+
+/**
+ * The frosted-glass source: the background drawn at 1/4 size and blurred (three box-blur passes ≈ a
+ * gaussian). Small and soft, so boxes and panels can show "what is behind them" cheaply.
+ */
+fun makeBackdrop(ctx: Context, art: AsciiArt, width: Int, height: Int, bottomGapPx: Float, fg: Int, bg: Int): Backdrop {
+    val scale = 4f
+    val w = (width / scale).toInt().coerceAtLeast(1); val h = (height / scale).toInt().coerceAtLeast(1)
+    val bmp = android.graphics.Bitmap.createBitmap(w, h, android.graphics.Bitmap.Config.ARGB_8888)
+    drawAscii(android.graphics.Canvas(bmp), art, w.toFloat(), h.toFloat(), bottomGapPx / scale,
+        ResourcesCompat.getFont(ctx, R.font.jetbrains_mono), fg, bg)
+    val px = IntArray(w * h)
+    bmp.getPixels(px, 0, w, 0, 0, w, h)
+    repeat(3) { boxBlur(px, w, h, 4) }
+    bmp.setPixels(px, 0, w, 0, 0, w, h)
+    return Backdrop(bmp.asImageBitmap(), scale)
+}
+
+/** One horizontal + one vertical pass of a moving-average blur over ARGB pixels. */
+private fun boxBlur(px: IntArray, w: Int, h: Int, r: Int) {
+    val tmp = IntArray(px.size)
+    fun pass(src: IntArray, dst: IntArray, len: Int, lines: Int, at: (line: Int, i: Int) -> Int) {
+        for (line in 0 until lines) {
+            var a = 0; var rr = 0; var g = 0; var b = 0
+            for (i in -r..r) { val p = src[at(line, i.coerceIn(0, len - 1))]; a += p ushr 24; rr += p shr 16 and 255; g += p shr 8 and 255; b += p and 255 }
+            val n = 2 * r + 1
+            for (i in 0 until len) {
+                dst[at(line, i)] = (a / n shl 24) or (rr / n shl 16) or (g / n shl 8) or (b / n)
+                val out = src[at(line, (i - r).coerceIn(0, len - 1))]; val inn = src[at(line, (i + r + 1).coerceIn(0, len - 1))]
+                a += (inn ushr 24) - (out ushr 24); rr += (inn shr 16 and 255) - (out shr 16 and 255)
+                g += (inn shr 8 and 255) - (out shr 8 and 255); b += (inn and 255) - (out and 255)
+            }
+        }
+    }
+    pass(px, tmp, w, h) { line, i -> line * w + i }
+    pass(tmp, px, h, w) { line, i -> i * w + line }
+}
+
 /**
  * The statue standing at the bottom of the screen, 70% of its height, on the palette's background.
  * The full drawing is made once into a bitmap; the "shimmer" (a few characters flickering, like a
@@ -59,25 +121,11 @@ fun AsciiBackground(art: AsciiArt, shimmer: Boolean) {
     if (shimmer) LaunchedEffect(Unit) { while (true) { delay(140); tick++ } }
 
     Box(Modifier.fillMaxSize().drawWithCache {
-        val cellH = size.height * 0.70f / art.rows
-        val cellW = cellH / 2
-        val left = (size.width - cellW * art.cols) / 2
-        val top = size.height - bottomGap - cellH * art.rows
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.typeface = typeface; textSize = cellW / 0.6f }
-        val baseline = (cellH - paint.textSize) / 2 - paint.fontMetrics.ascent
-        val fg = pal.fg.toArgb()
-        fun drawCell(c: android.graphics.Canvas, r: Int, col: Int, ch: Char, level: Int) {
-            paint.color = fg
-            paint.alpha = (25 + level * 25).coerceAtMost(255)
-            c.drawText(ch.toString(), left + col * cellW, top + r * cellH + baseline, paint)
-        }
         val bitmap = ImageBitmap(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1))
-        val canvas = android.graphics.Canvas(bitmap.asAndroidBitmap())
-        canvas.drawColor(pal.bg.toArgb())
-        for (r in 0 until art.rows) for (col in 0 until art.cols) {
-            val ch = art.chars[r][col]
-            if (ch != ' ') drawCell(canvas, r, col, ch, art.levels[r][col] - '0')
-        }
+        val lay = drawAscii(android.graphics.Canvas(bitmap.asAndroidBitmap()), art, size.width, size.height, bottomGap,
+            typeface, pal.fg.toArgb(), pal.bg.toArgb())
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.typeface = typeface; textSize = lay.cellW / 0.6f; color = pal.fg.toArgb() }
+        val baseline = (lay.cellH - paint.textSize) / 2 - paint.fontMetrics.ascent
         val erase = Paint().apply { color = pal.bg.toArgb() }
         onDrawBehind {
             drawImage(bitmap)
@@ -86,8 +134,9 @@ fun AsciiBackground(art: AsciiArt, shimmer: Boolean) {
                 repeat(10) {
                     val cell = art.filled[rnd.nextInt(art.filled.size)]
                     val r = cell / art.cols; val col = cell % art.cols
-                    cv.nativeCanvas.drawRect(left + col * cellW, top + r * cellH, left + (col + 1) * cellW, top + (r + 1) * cellH, erase)
-                    drawCell(cv.nativeCanvas, r, col, SHIMMER[rnd.nextInt(SHIMMER.length)], 9)
+                    val x = lay.left + col * lay.cellW; val y = lay.top + r * lay.cellH
+                    cv.nativeCanvas.drawRect(x, y, x + lay.cellW, y + lay.cellH, erase)
+                    cv.nativeCanvas.drawText(SHIMMER[rnd.nextInt(SHIMMER.length)].toString(), x, y + baseline, paint)
                 }
             }
         }

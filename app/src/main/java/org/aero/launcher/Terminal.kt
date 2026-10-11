@@ -119,7 +119,7 @@ fun TerminalWidget(repo: AppRepository, prefs: Prefs, modifier: Modifier, onMenu
                 value = input,
                 onValueChange = { input = it },
                 singleLine = true,
-                textStyle = TextStyle(fontFamily = Mono, fontSize = 14.sp, color = pal.fg),
+                textStyle = TextStyle(fontFamily = LocalFont.current, fontSize = 14.sp, color = pal.fg),
                 cursorBrush = SolidColor(pal.fg),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send, autoCorrectEnabled = false),
                 keyboardActions = KeyboardActions(onSend = { run(input); input = "" }),

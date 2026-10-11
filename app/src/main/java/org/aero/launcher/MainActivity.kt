@@ -31,6 +31,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** The home screen activity. Android shows it whenever Home is pressed (it has the HOME intent filter). */
 class MainActivity : ComponentActivity() {
@@ -53,7 +61,7 @@ class MainActivity : ComponentActivity() {
         widgets = WidgetHost(this)
         val art = AsciiArt.load(this, "eris.txt")
         setContent {
-            AeroTheme(prefs.theme.value, prefs.lang.value) {
+            AeroTheme(prefs.theme.value, prefs.lang.value, prefs.opacity.value, prefs.font.value, prefs.textScale.value) {
                 // status/navigation bar icons: light on the dark theme, dark on the light one (even when forced)
                 val dark = isDark()
                 LaunchedEffect(dark) {
@@ -136,7 +144,16 @@ fun Launcher(
         if (background == "eris") activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
         else activity.window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER)
     }
-    CompositionLocalProvider(LocalImeTarget provides imeTarget) { Box(Modifier.fillMaxSize()) {
+    // frosted glass: the background, small and blurred, made again when the screen, colours or background change
+    val pal = LocalPalette.current
+    val blurOn by prefs.blur
+    var screen by remember { mutableStateOf(IntSize.Zero) }
+    val bottomGap = with(LocalDensity.current) { 96.dp.toPx() }
+    val backdrop by produceState<Backdrop?>(null, screen, pal.fg, pal.bg, background, blurOn) {
+        value = if (!blurOn || background != "eris" || screen.width == 0) null
+        else withContext(Dispatchers.Default) { makeBackdrop(ctx, art, screen.width, screen.height, bottomGap, pal.fg.toArgb(), pal.bg.toArgb()) }
+    }
+    CompositionLocalProvider(LocalImeTarget provides imeTarget, LocalBackdrop provides backdrop) { Box(Modifier.fillMaxSize().onSizeChanged { screen = it }) {
         Home(repo, prefs, widgets, art, icons, drag, homePresses, isDefault, onMakeDefault,
             onOpenSearch = { searching = true }, onOpenSettings = { settings = true })
         AnimatedVisibility(

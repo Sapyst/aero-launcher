@@ -1,5 +1,8 @@
 package org.aero.launcher
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VectorConverter
@@ -27,6 +30,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -110,6 +114,13 @@ fun Home(
     val apps by repo.apps
     var menu by remember { mutableStateOf(false) }
     var itemMenu by remember { mutableStateOf<String?>(null) }
+    var resizing by remember { mutableStateOf<String?>(null) }        // widget showing its resize handles
+    var resizeTo by remember { mutableStateOf<Item?>(null) }          // its new size while a handle is dragged
+    val pagesPref by prefs.pages
+    val rowsManual by prefs.rowsManual
+    val showPrompt by prefs.showPrompt
+    val iconScale by prefs.iconScale
+    BackHandler(enabled = resizing != null) { resizing = null; resizeTo = null }
 
     // grid geometry, measured below
     var grid by remember { mutableStateOf<LayoutCoordinates?>(null) }
@@ -120,13 +131,14 @@ fun Home(
     var screenH by remember { mutableFloatStateOf(0f) }
 
     val usedPages = (items.filter { it.page >= 0 }.maxOfOrNull { it.page } ?: 0) + 1
-    val pageCount = usedPages + if (drag.active) 1 else 0          // an empty page to drop on while dragging
+    val basePages = maxOf(pagesPref, usedPages)                    // workspaces you created, empty ones too
+    val pageCount = basePages + if (drag.active) 1 else 0          // an extra empty page to drop on while dragging
     val pager = rememberPagerState(pageCount = { pageCount })
 
-    LaunchedEffect(homePresses) { focus.clearFocus(); menu = false; itemMenu = null; pager.animateScrollToPage(0) }
+    LaunchedEffect(homePresses) { focus.clearFocus(); menu = false; itemMenu = null; resizing = null; pager.animateScrollToPage(0) }
 
-    // Keep the grid tidy: place new things (page -1), refit after a change of columns, drop icons of
-    // uninstalled apps, and close the gaps left by empty pages.
+    // Keep the grid tidy: place new things (page -1), refit after a change of columns or rows, and drop
+    // icons of uninstalled apps. Empty pages stay: they are workspaces you made.
     LaunchedEffect(items, cols, rows, apps) {
         if (drag.active) return@LaunchedEffect
         var list = items
@@ -134,9 +146,9 @@ fun Home(
         val ok = list.filter { it.page >= 0 && it.x + it.w <= cols && it.y + it.h <= rows }
         var placed = ok
         for (t in list - ok.toSet()) placed = placed + firstFree(placed, t, cols, rows, t.page.coerceAtLeast(0))
-        val pages = placed.map { it.page }.distinct().sorted()
-        placed = placed.map { it.copy(page = pages.indexOf(it.page)) }
         if (placed.toSet() != items.toSet()) prefs.setItems(placed)
+        val need = (placed.maxOfOrNull { it.page } ?: 0) + 1
+        if (need > prefs.pages.value) prefs.setPages(need)
     }
 
     fun toGrid(window: Offset) = grid?.takeIf { it.isAttached }?.windowToLocal(window) ?: window
@@ -178,7 +190,10 @@ fun Home(
             "info" -> { app?.let(repo::openInfo); drag.item = null; return@release }
             "uninstall" -> { app?.let(repo::uninstall); drag.item = null; return@release }
         }
-        if (!drag.isNew && drag.moved < 12f) { itemMenu = it.id; drag.item = null; return@release }
+        if (!drag.isNew && drag.moved < 12f) {
+            if (it.kind == Kind.APP) itemMenu = it.id else { resizing = it.id; resizeTo = null }
+            drag.item = null; return@release
+        }
         val dest = target()
         if (dest == null) { drag.item = null; return@release }        // page full: it stays where it was
         scope.launch {
@@ -219,8 +234,9 @@ fun Home(
             val hit = prefs.items.value.firstOrNull { it.page == pager.currentPage && cellRect(it).contains(local) }
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             press.consume()
-            if (hit == null) menu = true
+            if (hit == null) { if (resizing != null) resizing = null else menu = true }
             else {
+                resizing = null
                 focus.clearFocus()
                 drag.isNew = false
                 drag.moved = 0f
@@ -262,7 +278,7 @@ fun Home(
         Column(Modifier.fillMaxSize().systemBarsPadding().graphicsLayer { translationY = -lift }) {
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
                 val cw = constraints.maxWidth / cols.toFloat()
-                val newRows = (constraints.maxHeight / cw).toInt().coerceAtLeast(4)
+                val newRows = if (rowsManual > 0) rowsManual else (constraints.maxHeight / cw).toInt().coerceAtLeast(4)
                 cellW = cw
                 cellH = constraints.maxHeight / newRows.toFloat()
                 drag.cell = Offset(cellW, cellH)
@@ -274,10 +290,11 @@ fun Home(
                         .then(longPress)
                         .then(swipes)
                 ) {
-                    HorizontalPager(state = pager, modifier = Modifier.fillMaxSize(), userScrollEnabled = !drag.active, beyondViewportPageCount = 1) { page ->
+                    HorizontalPager(state = pager, modifier = Modifier.fillMaxSize(), userScrollEnabled = !drag.active && resizing == null, beyondViewportPageCount = 1) { page ->
                         Box(Modifier.fillMaxSize()) {
-                            items.filter { it.page == page }.forEach { item ->
-                                key(item.id) {
+                            items.filter { it.page == page }.forEach { stored ->
+                                key(stored.id) {
+                                    val item = if (stored.id == resizing) resizeTo ?: stored else stored
                                     val hidden = drag.item?.id == item.id
                                     Box(
                                         Modifier
@@ -299,6 +316,50 @@ fun Home(
                                         .border(1.dp, pal.fg.copy(alpha = 0.55f), RoundedCornerShape(10.dp))
                                 )
                             }
+                            // resize: four handles on the edges; drag one and the widget follows, cell by cell
+                            if (page == pager.currentPage) items.firstOrNull { it.id == resizing }?.let { base ->
+                                val cur = resizeTo ?: base
+                                val others = items.filter { it.id != base.id }
+                                val ok = fits(others, cur, cols, rows)
+                                Box(
+                                    Modifier
+                                        .offset { IntOffset((cur.x * cellW).roundToInt(), (cur.y * cellH).roundToInt()) }
+                                        .size(with(density) { (cur.w * cellW).toDp() }, with(density) { (cur.h * cellH).toDp() })
+                                        .padding(2.dp)
+                                        .border(1.5.dp, if (ok) pal.fg else pal.dim, RoundedCornerShape(11.dp))
+                                )
+                                listOf("l", "r", "t", "b").forEach { edge ->
+                                    val hs = with(density) { 26.dp.toPx() }
+                                    // a little inside the widget: the very screen edge belongs to Android's back gesture
+                                    val inset = with(density) { 14.dp.toPx() }
+                                    val cx = when (edge) { "l" -> cur.x * cellW + inset; "r" -> (cur.x + cur.w) * cellW - inset; else -> (cur.x + cur.w / 2f) * cellW }
+                                    val cy = when (edge) { "t" -> cur.y * cellH + inset; "b" -> (cur.y + cur.h) * cellH - inset; else -> (cur.y + cur.h / 2f) * cellH }
+                                    Box(
+                                        Modifier
+                                            .offset { IntOffset((cx - hs / 2).roundToInt(), (cy - hs / 2).roundToInt()) }
+                                            .size(26.dp)
+                                            .systemGestureExclusion()      // and here the touch is ours, not "back"
+                                            .background(pal.bg, CircleShape)
+                                            .border(1.5.dp, pal.fg, CircleShape)
+                                            .pointerInput(edge, base) {
+                                                var acc = Offset.Zero
+                                                detectDragGestures(
+                                                    onDragStart = { acc = Offset.Zero },
+                                                    onDragEnd = {
+                                                        val c = resizeTo
+                                                        if (c != null && fits(others, c, cols, rows)) prefs.setItems(others + c)
+                                                        resizeTo = null
+                                                    },
+                                                    onDragCancel = { resizeTo = null },
+                                                ) { change, amount ->
+                                                    change.consume()
+                                                    acc += amount
+                                                    resizeTo = resized(base, edge, acc, cellW, cellH, cols, rows)
+                                                }
+                                            }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -309,14 +370,12 @@ fun Home(
             if (!isDefault) TermBox(L("setup", "configurar"), Modifier.fillMaxWidth().padding(horizontal = 16.dp), onClick = onMakeDefault) {
                 T(L("> make aero launcher your home screen", "> fazer do aero launcher sua tela inicial"), 14.sp)
             }
-            TermBox("", Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), onClick = onOpenSearch) {
+            if (showPrompt) TermBox("", Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), onClick = onOpenSearch) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     T("$ ", 18.sp, pal.dim)
                     Cursor()
-                    Spacer(Modifier.weight(1f))
-                    T(L("swipe up · all apps", "deslize pra cima · apps"), 11.sp, pal.dim)
                 }
-            }
+            } else Spacer(Modifier.height(12.dp))
         }
 
         // drop targets (top) while something is being dragged
@@ -340,6 +399,26 @@ fun Home(
                 }
             }
         } else if (targets.isNotEmpty()) targets.clear()
+        if (resizing != null && !drag.active) Box(Modifier.fillMaxSize().systemBarsPadding(), contentAlignment = Alignment.BottomCenter) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(
+                    L("✓ done", "✓ pronto") to { resizing = null; resizeTo = null },
+                    L("× remove", "× remover") to {
+                        items.firstOrNull { it.id == resizing }?.let { r ->
+                            if (r.kind == Kind.ANDROID) host.remove(r.widgetId)
+                            prefs.setItems(items.filter { it.id != r.id })
+                        }
+                        resizing = null
+                    },
+                ).forEach { (text, action) ->
+                    Box(
+                        Modifier.weight(1f).glassScrim().border(1.dp, pal.line, RoundedCornerShape(8.dp))
+                            .clickable(onClick = action).padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center,
+                    ) { T(text, 13.sp, pal.fg, maxLines = 1) }
+                }
+            }
+        }
 
         // the dragged item itself, above everything, under the finger
         drag.item?.let { it ->
@@ -355,7 +434,16 @@ fun Home(
 
         if (menu) Menu(
             "launcher",
-            listOf(
+            listOfNotNull(
+                L("new workspace", "nova área de trabalho") to {
+                    prefs.setPages(basePages + 1)
+                    scope.launch { delay(60); pager.animateScrollToPage(basePages) }
+                },
+                if (basePages > 1 && items.none { it.page == pager.currentPage }) L("delete this empty workspace", "apagar esta área vazia") to {
+                    val gone = pager.currentPage
+                    prefs.setItems(items.map { if (it.page > gone) it.copy(page = it.page - 1) else it })
+                    prefs.setPages(basePages - 1)
+                } else null,
                 L("launcher settings", "configurações do launcher") to onOpenSettings,
                 L("system wallpaper", "papel de parede do sistema") to { openWallpaperPicker(ctx) },
                 L("android settings", "configurações do android") to { openAndroidSettings(ctx) },
@@ -396,7 +484,7 @@ fun Home(
 @Composable
 fun ItemView(item: Item, repo: AppRepository, prefs: Prefs, host: WidgetHost, icons: IconCache, modifier: Modifier) {
     when (item.kind) {
-        Kind.APP -> repo.byKey(item.appKey)?.let { AppIcon(it, repo, icons, modifier) } ?: Box(modifier)
+        Kind.APP -> repo.byKey(item.appKey)?.let { AppIcon(it, repo, icons, prefs.iconScale.value, modifier) } ?: Box(modifier)
         Kind.CLOCK -> ClockWidget(prefs, modifier, null)
         Kind.WEATHER -> WeatherWidget(modifier, null)
         Kind.APPS -> AppsWidget(repo, modifier, null)
@@ -410,13 +498,13 @@ fun ItemView(item: Item, repo: AppRepository, prefs: Prefs, host: WidgetHost, ic
 
 /** An app on the home: its black-and-white icon and its name. */
 @Composable
-fun AppIcon(app: App, repo: AppRepository, icons: IconCache, modifier: Modifier) {
+fun AppIcon(app: App, repo: AppRepository, icons: IconCache, scale: Float, modifier: Modifier) {
     Column(
         modifier.clickable { repo.launch(app) },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        MonoIcon(icons, app, 50.dp)
+        MonoIcon(icons, app, 50.dp * scale)
         T(app.label, 11.sp, modifier = Modifier.padding(top = 4.dp), maxLines = 1)
     }
 }
@@ -434,12 +522,24 @@ fun Cursor(height: Int = 20) {
 @Composable
 fun Menu(title: String, items: List<Pair<String, () -> Unit>>, onDismiss: () -> Unit) {
     val pal = LocalPalette.current
-    Box(Modifier.fillMaxSize().background(pal.scrim).clickable(onClick = onDismiss), contentAlignment = Alignment.BottomCenter) {
+    Box(Modifier.fillMaxSize().glassScrim().clickable(onClick = onDismiss), contentAlignment = Alignment.BottomCenter) {
         TermBox(title, Modifier.fillMaxWidth().systemBarsPadding().padding(16.dp), opaque = true) {
             items.forEach { (text, action) ->
                 T("> $text", 16.sp, pal.fg, Modifier.fillMaxWidth().clickable { onDismiss(); action() }.padding(vertical = 10.dp))
             }
             T(LocalLang.current("> cancel", "> cancelar"), 16.sp, pal.dim, Modifier.fillMaxWidth().clickable(onClick = onDismiss).padding(vertical = 10.dp))
         }
+    }
+}
+
+/** The item with one edge moved by [drag] pixels, rounded to whole cells and kept inside the grid. */
+private fun resized(base: Item, edge: String, drag: Offset, cellW: Float, cellH: Float, cols: Int, rows: Int): Item {
+    val dx = (drag.x / cellW).roundToInt()
+    val dy = (drag.y / cellH).roundToInt()
+    return when (edge) {
+        "r" -> base.copy(w = (base.w + dx).coerceIn(1, cols - base.x))
+        "l" -> { val nx = (base.x + dx).coerceIn(0, base.x + base.w - 1); base.copy(x = nx, w = base.x + base.w - nx) }
+        "b" -> base.copy(h = (base.h + dy).coerceIn(1, rows - base.y))
+        else -> { val ny = (base.y + dy).coerceIn(0, base.y + base.h - 1); base.copy(y = ny, h = base.y + base.h - ny) }
     }
 }

@@ -19,10 +19,14 @@ the widgets of the *Arch Aero OS* desktop (Hyprland) it was made alongside.
   - **any Android app widget** (music, calendar, notes…), hosted inside a box
 - **Background**: the ASCII statue on true black (pixels off on OLED), with an optional subtle
   "live terminal" shimmer, or the system wallpaper.
-- **Home grid** like Android's own launchers: pages side by side, 4 or 5 columns. Long press anything and
-  drag it: an outline shows the cells where it will land and it snaps there ("magnet"); hold it at the
-  side edge to change page; drop it on *remove* / *app info* / *uninstall* at the top. Long press and let
-  go = its menu (resize widgets, remove). Long press an app in the list and drag it onto the home.
+- **Home grid** like Android's own launchers: workspaces side by side (create and delete them, empty
+  ones too), 3–6 columns, rows automatic or chosen. Long press anything and drag it: an outline shows
+  the cells where it will land and it snaps there ("magnet"); hold it at the side edge to change
+  workspace; drop it on *remove* / *app info* / *uninstall*. Long press a widget and let go: handles on
+  its edges, drag them to resize cell by cell. Long press an app in the list and drag it onto the home.
+- **Frosted glass**: boxes and panels show the background blurred behind a see-through fill
+  (opacity adjustable), like the desktop's carbon windows.
+- **Settings**: theme, language, opacity, blur, font, text size, icon size, grid, `$` bar on/off.
 - **Black-and-white icons, automatically** (also for apps installed later): apps with an Android 13+
   monochrome icon get it on a round plate; the others are desaturated (and inverted when too bright
   for the dark theme).

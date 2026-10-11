@@ -91,8 +91,9 @@ class WidgetHost(private val activity: Activity) {
 @Composable
 fun AndroidWidget(host: WidgetHost, slot: Slot, modifier: Modifier, onMenu: () -> Unit) {
     val info = host.manager.getAppWidgetInfo(slot.widgetId)
+    val L = LocalLang.current
     TermBox(info?.let { host.label(it).lowercase() } ?: "widget", modifier, onLongClick = onMenu) {
-        if (info == null) { T("this widget is gone (app removed?)", 12.sp, LocalPalette.current.dim); return@TermBox }
+        if (info == null) { T(L("this widget is gone (app removed?)", "esse widget sumiu (app desinstalado?)"), 12.sp, LocalPalette.current.dim); return@TermBox }
         AndroidView(
             factory = { _ ->
                 var last = 0 to 0                             // only tell the widget when the size really changes

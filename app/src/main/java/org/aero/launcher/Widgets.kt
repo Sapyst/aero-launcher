@@ -61,7 +61,6 @@ private val MM = DateTimeFormatter.ofPattern(":mm", Locale.ENGLISH)
 private val SS = DateTimeFormatter.ofPattern(":ss", Locale.ENGLISH)
 private val HM = DateTimeFormatter.ofPattern("HH:mm", Locale.ENGLISH)
 private val NUMDATE = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ENGLISH)
-private val WEEKMONTH = DateTimeFormatter.ofPattern("EEEE · MMMM", Locale.ENGLISH)
 private val SAO_PAULO = ZoneId.of("America/Sao_Paulo")
 
 // ---------- clock: hours bright, minutes dimmer (like the desktop), numeric date, SP and local ----------
@@ -76,13 +75,15 @@ fun ClockWidget(prefs: Prefs, modifier: Modifier, onMenu: () -> Unit) {
             delay(if (seconds) 1000 - System.currentTimeMillis() % 1000 else 60_000 - System.currentTimeMillis() % 60_000)
         }
     }
-    TermBox("clock", modifier, onLongClick = onMenu) {
+    val L = LocalLang.current
+    val weekMonth = remember(L.locale) { DateTimeFormatter.ofPattern("EEEE · MMMM", L.locale) }   // "sunday · october" / "domingo · outubro"
+    TermBox(Kind.CLOCK.title(L), modifier, onLongClick = onMenu) {
         Row(verticalAlignment = Alignment.Bottom) {
             T(now.format(HH), 62.sp)
             T(now.format(MM), 62.sp, pal.dim)
             if (seconds) T(now.format(SS), 26.sp, pal.dim, Modifier.padding(bottom = 9.dp))
         }
-        T("${now.format(NUMDATE)} · ${now.format(WEEKMONTH).lowercase()}", 13.sp, pal.fg)
+        T("${now.format(NUMDATE)} · ${now.format(weekMonth).lowercase()}", 13.sp, pal.fg)
         val sp = now.withZoneSameInstant(SAO_PAULO)
         T("sp ${sp.format(HM)} · local ${now.format(HM)}", 12.sp, pal.dim)
     }
@@ -100,14 +101,15 @@ fun WeatherWidget(modifier: Modifier, onMenu: () -> Unit) {
         }
     }
     val w = weather
-    TermBox(if (w == null) "weather" else "weather · ${w.city}", modifier, onLongClick = onMenu) {
-        if (w == null) { T("…", 30.sp); T("loading", 12.sp, pal.dim); return@TermBox }
+    val L = LocalLang.current
+    TermBox(if (w == null) Kind.WEATHER.title(L) else "${Kind.WEATHER.title(L)} · ${w.city}", modifier, onLongClick = onMenu) {
+        if (w == null) { T("…", 30.sp); T(L("loading", "carregando"), 12.sp, pal.dim); return@TermBox }
         Row(verticalAlignment = Alignment.CenterVertically) {
             // Nerd Font icons are drawn wider than their advance: give them a fixed box so nothing overlaps
             Box(Modifier.width(54.dp), contentAlignment = Alignment.CenterStart) { T(glyph(w.code), 34.sp) }
             Column {
-                T("${w.temp}°  ${w.text}", 20.sp, maxLines = 1)
-                T("feels ${w.feels}° · wind ${w.wind} km/h", 12.sp, pal.dim, maxLines = 1)
+                T("${w.temp}°  ${describe(w.code, L)}", 20.sp, maxLines = 1)
+                T(L("feels ${w.feels}° · wind ${w.wind} km/h", "sensação ${w.feels}° · vento ${w.wind} km/h"), 12.sp, pal.dim, maxLines = 1)
             }
         }
         val days = w.days.take(5)
@@ -115,7 +117,7 @@ fun WeatherWidget(modifier: Modifier, onMenu: () -> Unit) {
         Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
             days.forEach { d ->
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    T(d.name, 11.sp, if (d.name == "today") pal.fg else pal.dim)
+                    T(d.name(L), 11.sp, if (d.date == java.time.LocalDate.now()) pal.fg else pal.dim)
                     T(glyph(d.code), 18.sp, modifier = Modifier.padding(vertical = 2.dp))
                     T("${d.max}°", 12.sp)
                     T("${d.min}°", 12.sp, pal.dim)
@@ -165,14 +167,15 @@ fun rememberBattery(): State<BatteryInfo> {
 fun BatteryWidget(modifier: Modifier, onMenu: () -> Unit) {
     val pal = LocalPalette.current
     val b by rememberBattery()
-    TermBox("battery", modifier, onLongClick = onMenu) {
+    val L = LocalLang.current
+    TermBox(Kind.BATTERY.title(L), modifier, onLongClick = onMenu) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.width(38.dp)) { T("", 22.sp) }
             T(if (b.level < 0) "…" else "${b.level}%" + if (b.charging) " +" else "", 26.sp)
         }
         val cells = ((b.level.coerceAtLeast(0) + 6) / 12.5).toInt().coerceIn(0, 8)
         T("█".repeat(cells) + "░".repeat(8 - cells), 12.sp, pal.dim)
-        T("${"%.1f".format(b.tempC)}°c" + if (b.plug.isNotEmpty()) " · ${b.plug}" else "", 12.sp, pal.dim)
+        T("${"%.1f".format(b.tempC)}°c" + if (b.plug.isNotEmpty()) " · ${plugName(b.plug, L)}" else "", 12.sp, pal.dim)
     }
 }
 
@@ -226,13 +229,14 @@ fun ResourcesWidget(modifier: Modifier, onMenu: () -> Unit) {
             delay(2000)
         }
     }
-    TermBox("resources", modifier, onLongClick = onMenu) {
+    val L = LocalLang.current
+    TermBox(Kind.RESOURCES.title(L), modifier, onLongClick = onMenu) {
         val r = res
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Ring("cpu", r?.cpu, r?.cpu?.let { "${(it * 100).toInt()}%" } ?: "n/a", "clock")
+            Ring("cpu", r?.cpu, r?.cpu?.let { "${(it * 100).toInt()}%" } ?: "n/a", L("clock", "frequência"))
             Ring("mem", r?.mem, r?.let { "${(it.mem * 100).toInt()}%" } ?: "…", r?.memText ?: "")
-            Ring("disk", r?.disk, r?.let { "${(it.disk * 100).toInt()}%" } ?: "…", r?.diskText ?: "")
-            Ring("heat", ((battery.tempC - 20f) / 30f).coerceIn(0f, 1f), "${battery.tempC.toInt()}°", thermal)
+            Ring(L("disk", "disco"), r?.disk, r?.let { "${(it.disk * 100).toInt()}%" } ?: "…", r?.diskText ?: "")
+            Ring(L("heat", "calor"), ((battery.tempC - 20f) / 30f).coerceIn(0f, 1f), "${battery.tempC.toInt()}°", thermalName(thermal, L))
         }
         Spacer(Modifier.height(10.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -301,9 +305,10 @@ fun AppsWidget(repo: AppRepository, modifier: Modifier, onMenu: () -> Unit) {
     val pinnedKeys by repo.pinned
     val all by repo.apps
     val apps = remember(pinnedKeys, all) { repo.pinnedApps() }
-    TermBox("apps", modifier, onLongClick = onMenu) {
+    val L = LocalLang.current
+    TermBox(Kind.APPS.title(L), modifier, onLongClick = onMenu) {
         if (apps.isEmpty()) {
-            T("swipe up, long-press an app, \"pin to home\"", 12.sp, pal.dim)
+            T(L("swipe up, long-press an app, \"pin to home\"", "deslize pra cima, segure um app, \"fixar na home\""), 12.sp, pal.dim)
         } else {
             apps.chunked(2).forEach { row ->
                 Row(Modifier.fillMaxWidth()) {
@@ -315,4 +320,12 @@ fun AppsWidget(repo: AppRepository, modifier: Modifier, onMenu: () -> Unit) {
             }
         }
     }
+}
+
+private fun plugName(plug: String, L: Lang) = when (plug) {
+    "ac" -> L("ac", "tomada"); "usb" -> "usb"; "wireless" -> L("wireless", "sem fio"); else -> plug
+}
+private fun thermalName(status: String, L: Lang) = when (status) {
+    "cool" -> L("cool", "fresco"); "warm" -> L("warm", "morno"); "hot" -> L("hot", "quente")
+    "throttling" -> L("throttling", "limitando"); else -> status
 }

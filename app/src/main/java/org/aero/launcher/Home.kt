@@ -52,6 +52,7 @@ fun Home(
 ) {
     val ctx = LocalContext.current
     val pal = LocalPalette.current
+    val L = LocalLang.current
     val background by prefs.background
     val shimmer by prefs.shimmer
     val slots by prefs.slots
@@ -93,9 +94,9 @@ fun Home(
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                if (!isDefault) TermBox("setup", Modifier.fillMaxWidth(), onClick = onMakeDefault) {
-                    T("> make aero launcher your home screen", 15.sp)
-                    T("so the Home button and the swipe-up gesture come here", 11.sp, pal.dim)
+                if (!isDefault) TermBox(L("setup", "configurar"), Modifier.fillMaxWidth(), onClick = onMakeDefault) {
+                    T(L("> make aero launcher your home screen", "> fazer do aero launcher sua tela inicial"), 15.sp)
+                    T(L("so the Home button and the swipe-up gesture come here", "pro botão Home e o gesto de deslizar virem pra cá"), 11.sp, pal.dim)
                 }
                 var i = 0
                 while (i < slots.size) {
@@ -120,16 +121,16 @@ fun Home(
                     T("$ ", 18.sp, pal.dim)
                     Cursor()
                     Spacer(Modifier.weight(1f))
-                    T("swipe up · all apps", 11.sp, pal.dim)
+                    T(L("swipe up · all apps", "deslize pra cima · apps"), 11.sp, pal.dim)
                 }
             }
         }
         if (menu) Menu(
             "launcher",
             listOf(
-                "launcher settings" to onOpenSettings,
-                "system wallpaper" to { openWallpaperPicker(ctx) },
-                "android settings" to { openAndroidSettings(ctx) },
+                L("launcher settings", "configurações do launcher") to onOpenSettings,
+                L("system wallpaper", "papel de parede do sistema") to { openWallpaperPicker(ctx) },
+                L("android settings", "configurações do android") to { openAndroidSettings(ctx) },
             ),
             onDismiss = { menu = false },
         )
@@ -138,16 +139,16 @@ fun Home(
             if (index < list.size) {
                 val s = list[index]
                 Menu(
-                    s.kind.title,
+                    s.kind.title(L),
                     listOf(
-                        "move up" to { if (index > 0) prefs.setSlots(list.toMutableList().apply { add(index - 1, removeAt(index)) }) },
-                        "move down" to { if (index < list.size - 1) prefs.setSlots(list.toMutableList().apply { add(index + 1, removeAt(index)) }) },
-                        (if (s.half) "full width" else "half width") to { prefs.setSlots(list.toMutableList().apply { set(index, s.copy(half = !s.half)) }) },
-                        "remove" to {
+                        L("move up", "subir") to { if (index > 0) prefs.setSlots(list.toMutableList().apply { add(index - 1, removeAt(index)) }) },
+                        L("move down", "descer") to { if (index < list.size - 1) prefs.setSlots(list.toMutableList().apply { add(index + 1, removeAt(index)) }) },
+                        (if (s.half) L("full width", "largura inteira") else L("half width", "meia largura")) to { prefs.setSlots(list.toMutableList().apply { set(index, s.copy(half = !s.half)) }) },
+                        L("remove", "remover") to {
                             if (s.kind == Kind.ANDROID) host.remove(s.widgetId)
                             prefs.setSlots(list.toMutableList().apply { removeAt(index) })
                         },
-                        "launcher settings" to onOpenSettings,
+                        L("launcher settings", "configurações do launcher") to onOpenSettings,
                     ),
                     onDismiss = { slotMenu = null },
                 )
@@ -188,7 +189,7 @@ fun Menu(title: String, items: List<Pair<String, () -> Unit>>, onDismiss: () -> 
             items.forEach { (text, action) ->
                 T("> $text", 16.sp, pal.fg, Modifier.fillMaxWidth().clickable { onDismiss(); action() }.padding(vertical = 10.dp))
             }
-            T("> cancel", 16.sp, pal.dim, Modifier.fillMaxWidth().clickable(onClick = onDismiss).padding(vertical = 10.dp))
+            T(LocalLang.current("> cancel", "> cancelar"), 16.sp, pal.dim, Modifier.fillMaxWidth().clickable(onClick = onDismiss).padding(vertical = 10.dp))
         }
     }
 }

@@ -22,7 +22,9 @@ the widgets of the *Arch Aero OS* desktop (Hyprland) it was made alongside.
 - **Gestures**: drag down = notifications, drag up = search, long press = menus.
 - **Search**: live filter (`ffx` finds Firefox), Enter opens the first match, `web <text>` or no
   match = your default browser with the engine you pick (Google, DuckDuckGo, Startpage, Bing).
-- Long press an app: pin to home, app info, uninstall. Follows dark/light mode.
+- Long press an app: pin to home, app info, uninstall.
+- **Theme**: follow the phone, dark (OLED black) or light. **Language**: English or Portuguese (pt-BR).
+- Asks to become the default home screen (Android's own dialog); works with gesture navigation.
 
 ## Settings
 Long press on an empty part of the home screen → `launcher settings`.

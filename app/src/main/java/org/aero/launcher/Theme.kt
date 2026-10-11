@@ -54,10 +54,29 @@ private val Light = Palette(
 val LocalPalette = staticCompositionLocalOf { Dark }
 val Mono = FontFamily(Font(R.font.jetbrains_mono))
 
-@Composable
-fun AeroTheme(content: @Composable () -> Unit) {
-    CompositionLocalProvider(LocalPalette provides if (isSystemInDarkTheme()) Dark else Light) { content() }
+/**
+ * The launcher's language: English by default, Portuguese as an option in its settings.
+ * Every text is written with both versions side by side: L("clock", "relógio").
+ */
+class Lang(val pt: Boolean) {
+    operator fun invoke(en: String, pt: String) = if (this.pt) pt else en
+    val locale: java.util.Locale = if (pt) java.util.Locale("pt", "BR") else java.util.Locale.ENGLISH
 }
+val LocalLang = staticCompositionLocalOf { Lang(false) }
+
+/** theme: "system" follows the phone, "dark" (OLED) or "light" force one. */
+@Composable
+fun AeroTheme(theme: String, lang: String, content: @Composable () -> Unit) {
+    val dark = when (theme) { "dark" -> true; "light" -> false; else -> isSystemInDarkTheme() }
+    CompositionLocalProvider(
+        LocalPalette provides if (dark) Dark else Light,
+        LocalLang provides Lang(lang == "pt"),
+    ) { content() }
+}
+
+/** True when the dark palette is in use (status bar icons must be light then). */
+@Composable
+fun isDark() = LocalPalette.current === Dark
 
 /** Plain text in the launcher's font. */
 @Composable

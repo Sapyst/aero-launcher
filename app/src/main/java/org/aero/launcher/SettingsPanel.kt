@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefault: () -> Unit, onClose: () -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    val L = LocalLang.current
     val pal = LocalPalette.current
     val slots by prefs.slots
     var picking by remember { mutableStateOf(false) }
@@ -50,24 +51,37 @@ fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefa
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     T("$ aero-launcher --settings", 16.sp)
                     Spacer(Modifier.weight(1f))
-                    T("[ close ]", 14.sp, pal.dim, Modifier.clickable(onClick = onClose).padding(6.dp))
+                    T(L("[ close ]", "[ fechar ]"), 14.sp, pal.dim, Modifier.clickable(onClick = onClose).padding(6.dp))
                 }
             }
             item {
-                TermBox("home screen", Modifier.fillMaxWidth()) {
-                    if (isDefault) T("[x] aero launcher is the phone's home screen", 14.sp)
-                    else T("[ ] not the home screen yet · tap to set", 14.sp, pal.fg, Modifier.fillMaxWidth().clickable(onClick = onMakeDefault).padding(vertical = 6.dp))
-                    T("> android's \"default home app\" page", 13.sp, pal.dim, Modifier.fillMaxWidth().clickable { openHomeSettings(ctx) }.padding(vertical = 6.dp))
+                TermBox(L("home screen", "tela inicial"), Modifier.fillMaxWidth()) {
+                    if (isDefault) T(L("[x] aero launcher is the phone's home screen", "[x] o aero launcher é a tela inicial do celular"), 14.sp)
+                    else T(L("[ ] not the home screen yet · tap to set", "[ ] ainda não é a tela inicial · toque pra definir"), 14.sp, pal.fg, Modifier.fillMaxWidth().clickable(onClick = onMakeDefault).padding(vertical = 6.dp))
+                    T(L("> android's \"default home app\" page", "> página \"app de início padrão\" do android"), 13.sp, pal.dim, Modifier.fillMaxWidth().clickable { openHomeSettings(ctx) }.padding(vertical = 6.dp))
                 }
             }
             item {
-                TermBox("home widgets · ${slots.size}", Modifier.fillMaxWidth()) {
-                    if (slots.isEmpty()) T("nothing on the home screen: add something below", 12.sp, pal.dim)
+                val theme by prefs.theme
+                val lang by prefs.lang
+                TermBox(L("appearance", "aparência"), Modifier.fillMaxWidth()) {
+                    T(L("theme", "tema"), 12.sp, pal.dim)
+                    Choice(L("system (follows the phone)", "sistema (segue o celular)"), theme == "system") { prefs.setTheme("system") }
+                    Choice(L("dark · oled black", "escuro · preto oled"), theme == "dark") { prefs.setTheme("dark") }
+                    Choice(L("light", "claro"), theme == "light") { prefs.setTheme("light") }
+                    T(L("language", "idioma"), 12.sp, pal.dim, Modifier.padding(top = 8.dp))
+                    Choice("english", lang == "en") { prefs.setLang("en") }
+                    Choice("português", lang == "pt") { prefs.setLang("pt") }
+                }
+            }
+            item {
+                TermBox(L("home widgets · ${slots.size}", "widgets da home · ${slots.size}"), Modifier.fillMaxWidth()) {
+                    if (slots.isEmpty()) T(L("nothing on the home screen: add something below", "nada na home: adicione algo abaixo"), 12.sp, pal.dim)
                     slots.forEachIndexed { i, s ->
                         Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                             val name = if (s.kind == Kind.ANDROID)
                                 host.manager.getAppWidgetInfo(s.widgetId)?.let { host.label(it).lowercase() } ?: "widget (gone)"
-                            else s.kind.title
+                            else s.kind.title(L)
                             T("${i + 1}. $name", 14.sp, modifier = Modifier.weight(1f), maxLines = 1)
                             Btn("↑") { if (i > 0) update { add(i - 1, removeAt(i)) } }
                             Btn("↓") { if (i < slots.size - 1) update { add(i + 1, removeAt(i)) } }
@@ -82,50 +96,50 @@ fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefa
                             }
                         }
                     }
-                    T("↑↓ order · ½/1 half or full width (two halves share a row) · × remove", 11.sp, pal.dim, Modifier.padding(top = 4.dp))
+                    T(L("↑↓ order · ½/1 half or full width (two halves share a row) · × remove", "↑↓ ordem · ½/1 meia ou inteira (duas metades dividem a linha) · × remove"), 11.sp, pal.dim, Modifier.padding(top = 4.dp))
                 }
             }
             item {
-                TermBox("add a widget", Modifier.fillMaxWidth()) {
+                TermBox(L("add a widget", "adicionar widget"), Modifier.fillMaxWidth()) {
                     Kind.entries.filter { it != Kind.ANDROID && slots.none { s -> s.kind == it } }.forEach { k ->
                         Column(Modifier.fillMaxWidth().clickable { update { add(Slot(k)) } }.padding(vertical = 6.dp)) {
-                            T("> ${k.title}", 15.sp)
-                            T("  ${k.about}", 11.sp, pal.dim)
+                            T("> ${k.title(L)}", 15.sp)
+                            T("  ${k.about(L)}", 11.sp, pal.dim)
                         }
                     }
                     Column(Modifier.fillMaxWidth().clickable { picking = true }.padding(vertical = 6.dp)) {
-                        T("> android widget…", 15.sp)
-                        T("  from another app: music, calendar, notes…", 11.sp, pal.dim)
+                        T(L("> android widget…", "> widget android…"), 15.sp)
+                        T(L("  from another app: music, calendar, notes…", "  de outro app: música, agenda, notas…"), 11.sp, pal.dim)
                     }
                 }
             }
             item {
                 val bg by prefs.background
                 val shimmer by prefs.shimmer
-                TermBox("background", Modifier.fillMaxWidth()) {
-                    Choice("eris ascii · oled black", bg == "eris") { prefs.setBackground("eris") }
-                    Choice("system wallpaper", bg == "wallpaper") { prefs.setBackground("wallpaper") }
-                    Toggle("shimmer (characters flicker like a live terminal)", shimmer) { prefs.setShimmer(!shimmer) }
+                TermBox(L("background", "fundo"), Modifier.fillMaxWidth()) {
+                    Choice(L("eris ascii · drawn by the launcher", "éris ascii · desenhada pelo launcher"), bg == "eris") { prefs.setBackground("eris") }
+                    Choice(L("system wallpaper", "papel de parede do sistema"), bg == "wallpaper") { prefs.setBackground("wallpaper") }
+                    Toggle(L("shimmer (characters flicker like a live terminal)", "brilho (caracteres piscam como terminal vivo)"), shimmer) { prefs.setShimmer(!shimmer) }
                 }
             }
             item {
                 val seconds by prefs.seconds
-                TermBox("clock", Modifier.fillMaxWidth()) {
-                    Toggle("show seconds", seconds) { prefs.setSeconds(!seconds) }
+                TermBox(Kind.CLOCK.title(L), Modifier.fillMaxWidth()) {
+                    Toggle(L("show seconds", "mostrar segundos"), seconds) { prefs.setSeconds(!seconds) }
                 }
             }
             item {
                 val engine by prefs.engine
-                TermBox("web search", Modifier.fillMaxWidth()) {
+                TermBox(L("web search", "busca na web"), Modifier.fillMaxWidth()) {
                     ENGINES.keys.forEach { e -> Choice(e, engine == e) { prefs.setEngine(e) } }
-                    T("opens in your default browser", 11.sp, pal.dim, Modifier.padding(top = 4.dp))
+                    T(L("opens in your default browser", "abre no seu navegador padrão"), 11.sp, pal.dim, Modifier.padding(top = 4.dp))
                 }
             }
             item {
                 val user by prefs.fetchUser
                 TermBox("fetch", Modifier.fillMaxWidth()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        T("name  ", 14.sp, pal.dim)
+                        T(L("name  ", "nome  "), 14.sp, pal.dim)
                         BasicTextField(
                             value = user,
                             onValueChange = { prefs.setFetchUser(it.filter { c -> !c.isWhitespace() }.take(20)) },
@@ -135,13 +149,14 @@ fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefa
                             modifier = Modifier.weight(1f),
                         )
                     }
-                    T("shown as name@phone at the top of fetch", 11.sp, pal.dim, Modifier.padding(top = 4.dp))
+                    T(L("shown as name@phone at the top of fetch", "aparece como nome@celular no topo do fetch"), 11.sp, pal.dim, Modifier.padding(top = 4.dp))
                 }
             }
             item {
-                TermBox("about", Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                TermBox(L("about", "sobre"), Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
                     T("aero launcher ${BuildConfig.VERSION_NAME}", 14.sp)
-                    T("a terminal-style home screen · same look as arch aero os", 11.sp, pal.dim)
+                    T(L("a terminal-style home screen · same look as arch aero os", "uma tela inicial estilo terminal · mesma cara do arch aero os"), 11.sp, pal.dim)
+                    T("github.com/Sapyst/aero-launcher", 11.sp, pal.dim)
                 }
             }
         }
@@ -165,7 +180,7 @@ private fun WidgetPicker(host: WidgetHost, onPick: (AppWidgetProviderInfo) -> Un
                 Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
                     T("$ widgets --list · ${providers.size}", 16.sp)
                     Spacer(Modifier.weight(1f))
-                    T("[ back ]", 14.sp, pal.dim, Modifier.clickable(onClick = onClose).padding(6.dp))
+                    T(LocalLang.current("[ back ]", "[ voltar ]"), 14.sp, pal.dim, Modifier.clickable(onClick = onClose).padding(6.dp))
                 }
             }
             items(providers) { info ->

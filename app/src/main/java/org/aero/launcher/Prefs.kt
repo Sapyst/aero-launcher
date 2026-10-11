@@ -4,15 +4,23 @@ import android.content.Context
 import androidx.compose.runtime.mutableStateOf
 
 /** The built-in widgets (the same family as the desktop's) plus any Android app widget. */
-enum class Kind(val id: String, val title: String, val about: String) {
-    CLOCK("clock", "clock", "time, date, são paulo and local"),
-    WEATHER("weather", "weather", "now and the next five days"),
-    APPS("apps", "apps", "your pinned apps"),
-    BATTERY("battery", "battery", "level, charging, temperature"),
-    RESOURCES("resources", "resources", "memory, storage, heat, network"),
-    FETCH("fetch", "fetch", "fastfetch of this phone"),
-    TERMINAL("terminal", "terminal", "a small shell"),
-    ANDROID("android", "android widget", "a widget from another app"),
+enum class Kind(val id: String) { CLOCK("clock"), WEATHER("weather"), APPS("apps"), BATTERY("battery"),
+    RESOURCES("resources"), FETCH("fetch"), TERMINAL("terminal"), ANDROID("android") }
+
+fun Kind.title(L: Lang) = when (this) {
+    Kind.CLOCK -> L("clock", "relógio"); Kind.WEATHER -> L("weather", "clima"); Kind.APPS -> "apps"
+    Kind.BATTERY -> L("battery", "bateria"); Kind.RESOURCES -> L("resources", "recursos"); Kind.FETCH -> "fetch"
+    Kind.TERMINAL -> "terminal"; Kind.ANDROID -> L("android widget", "widget android")
+}
+fun Kind.about(L: Lang) = when (this) {
+    Kind.CLOCK -> L("time, date, são paulo and local", "hora, data, são paulo e local")
+    Kind.WEATHER -> L("now and the next five days", "agora e os próximos cinco dias")
+    Kind.APPS -> L("your pinned apps", "seus apps fixados")
+    Kind.BATTERY -> L("level, charging, temperature", "nível, carregando, temperatura")
+    Kind.RESOURCES -> L("memory, storage, heat, network", "memória, armazenamento, calor, rede")
+    Kind.FETCH -> L("fastfetch of this phone", "o fastfetch deste celular")
+    Kind.TERMINAL -> L("a small shell", "um pequeno shell")
+    Kind.ANDROID -> L("a widget from another app", "um widget de outro app")
 }
 
 /** One place on the home screen. Two "half" slots in a row share the width. */
@@ -30,6 +38,8 @@ class Prefs(ctx: Context) {
     val seconds = mutableStateOf(sp.getBoolean("seconds", true))
     val engine = mutableStateOf(sp.getString("engine", "google")!!)
     val fetchUser = mutableStateOf(sp.getString("fetch_user", "aero")!!)
+    val theme = mutableStateOf(sp.getString("theme", "system")!!)          // "system" | "dark" | "light"
+    val lang = mutableStateOf(sp.getString("lang", "en")!!)                // "en" | "pt"
     val slots = mutableStateOf(loadSlots())
     /** We ask once, on the first start, to become the home screen; after that only the banner asks. */
     val askedHome get() = sp.getBoolean("asked_home", false)
@@ -40,6 +50,8 @@ class Prefs(ctx: Context) {
     fun setSeconds(v: Boolean) { seconds.value = v; sp.edit().putBoolean("seconds", v).apply() }
     fun setEngine(v: String) { engine.value = v; sp.edit().putString("engine", v).apply() }
     fun setFetchUser(v: String) { fetchUser.value = v; sp.edit().putString("fetch_user", v).apply() }
+    fun setTheme(v: String) { theme.value = v; sp.edit().putString("theme", v).apply() }
+    fun setLang(v: String) { lang.value = v; sp.edit().putString("lang", v).apply() }
 
     fun setSlots(list: List<Slot>) {
         slots.value = list

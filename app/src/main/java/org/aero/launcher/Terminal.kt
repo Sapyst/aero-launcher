@@ -46,12 +46,22 @@ private const val HELP = """launcher commands:
 anything else runs in Android's shell, e.g.
   uname -a · getprop ro.product.model · df -h /data · date"""
 
+private const val HELP_PT = """comandos do launcher:
+  open <app>     abre um app (mesma busca da lista)
+  web <texto>    busca na web
+  fetch          este celular, estilo fastfetch
+  apps           quantos apps estão instalados
+  clear          limpa a tela
+o resto roda no shell do Android, ex.:
+  uname -a · getprop ro.product.model · df -h /data · date"""
+
 @Composable
 fun TerminalWidget(repo: AppRepository, prefs: Prefs, modifier: Modifier, onMenu: () -> Unit) {
     val ctx = LocalContext.current
     val pal = LocalPalette.current
     val scope = rememberCoroutineScope()
-    val out = remember { mutableStateListOf("aero terminal · type help") }
+    val L = LocalLang.current
+    val out = remember { mutableStateListOf(L("aero terminal · type help", "aero terminal · digite help")) }
     var input by remember { mutableStateOf("") }
     val scroll = rememberScrollState()
     val battery by rememberBattery()
@@ -66,16 +76,16 @@ fun TerminalWidget(repo: AppRepository, prefs: Prefs, modifier: Modifier, onMenu
         val rest = cmd.substringAfter(' ', "").trim()
         when (word) {
             "" -> {}
-            "help" -> print(HELP)
+            "help" -> print(L(HELP, HELP_PT))
             "clear" -> out.clear()
             "apps" -> print("${repo.apps.value.size} apps")
             "fetch" -> fetchLines(ctx, prefs.fetchUser.value, repo.apps.value.size, battery).forEach { (k, v) ->
                 print(if (v.isEmpty()) k else k.padEnd(9) + v)
             }
-            "web" -> if (rest.isEmpty()) print("usage: web <text>") else { webSearch(ctx, rest, prefs.engine.value); print("opening the browser…") }
+            "web" -> if (rest.isEmpty()) print(L("usage: web <text>", "uso: web <texto>")) else { webSearch(ctx, rest, prefs.engine.value); print(L("opening the browser…", "abrindo o navegador…")) }
             "open" -> {
                 val app = rank(repo.apps.value, rest).firstOrNull()
-                if (app == null) print("no app matches \"$rest\"") else { repo.launch(app); print("opening ${app.label}…") }
+                if (app == null) print(L("no app matches \"$rest\"", "nenhum app encontrado: \"$rest\"")) else { repo.launch(app); print(L("opening ${app.label}…", "abrindo ${app.label}…")) }
             }
             else -> scope.launch {
                 val result = withContext(Dispatchers.IO) {

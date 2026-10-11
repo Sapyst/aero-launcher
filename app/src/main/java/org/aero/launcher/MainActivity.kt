@@ -52,7 +52,15 @@ class MainActivity : ComponentActivity() {
         widgets = WidgetHost(this)
         val art = AsciiArt.load(this, "eris.txt")
         setContent {
-            AeroTheme { Launcher(repo, prefs, widgets, art, homePresses.intValue, isDefault.value, ::requestDefaultHome) }
+            AeroTheme(prefs.theme.value, prefs.lang.value) {
+                // status/navigation bar icons: light on the dark theme, dark on the light one (even when forced)
+                val dark = isDark()
+                LaunchedEffect(dark) {
+                    val bars = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                    enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+                }
+                Launcher(repo, prefs, widgets, art, homePresses.intValue, isDefault.value, ::requestDefaultHome)
+            }
         }
     }
 

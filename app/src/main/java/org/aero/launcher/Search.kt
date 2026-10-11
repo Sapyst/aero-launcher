@@ -56,6 +56,7 @@ fun SearchPanel(repo: AppRepository, prefs: Prefs, onClose: () -> Unit) {
     var query by remember { mutableStateOf("") }
     var menuFor by remember { mutableStateOf<App?>(null) }
     val all by repo.apps
+    val L = LocalLang.current
     val results = remember(query, all) { rank(all, query) }
 
     fun open(app: App) { repo.launch(app); onClose() }
@@ -77,7 +78,7 @@ fun SearchPanel(repo: AppRepository, prefs: Prefs, onClose: () -> Unit) {
 
     Box(Modifier.fillMaxSize().background(pal.scrim)) {
         Column(Modifier.fillMaxSize().systemBarsPadding().imePadding().padding(horizontal = 16.dp, vertical = 8.dp)) {
-            TermBox("search", Modifier.fillMaxWidth()) {
+            TermBox(L("search", "busca"), Modifier.fillMaxWidth()) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     T("$ ", 18.sp, pal.dim)
                     BasicTextField(
@@ -97,7 +98,7 @@ fun SearchPanel(repo: AppRepository, prefs: Prefs, onClose: () -> Unit) {
             }
             LazyColumn(Modifier.weight(1f).nestedScroll(pullToClose), state = listState) {
                 if (query.isBlank()) {
-                    item { T("all apps · ${all.size}", 12.sp, pal.dim, Modifier.padding(top = 14.dp, bottom = 4.dp)) }
+                    item { T(L("all apps · ${all.size}", "todos os apps · ${all.size}"), 12.sp, pal.dim, Modifier.padding(top = 14.dp, bottom = 4.dp)) }
                     var letter = ' '
                     all.forEach { app ->
                         val first = app.label.firstOrNull()?.uppercaseChar()?.takeIf { it.isLetter() } ?: '#'
@@ -112,13 +113,13 @@ fun SearchPanel(repo: AppRepository, prefs: Prefs, onClose: () -> Unit) {
                 } else {
                     item {
                         TermBox("apps · ${results.size}", Modifier.fillMaxWidth().padding(top = 8.dp)) {
-                            if (results.isEmpty()) T("no app matches", 14.sp, pal.dim)
+                            if (results.isEmpty()) T(L("no app matches", "nenhum app encontrado"), 14.sp, pal.dim)
                             results.take(12).forEachIndexed { i, app -> AppRow(app, i == 0, { open(app) }, { menuFor = app }) }
                         }
                     }
                     item {
                         TermBox("web", Modifier.fillMaxWidth().padding(top = 8.dp), onClick = { web() }) {
-                            T("> search \"${query.removePrefix("web ").trim()}\" on the web", 14.sp, pal.dim)
+                            T(L("> search \"${query.removePrefix("web ").trim()}\" on the web", "> buscar \"${query.removePrefix("web ").trim()}\" na web"), 14.sp, pal.dim)
                         }
                     }
                 }
@@ -128,9 +129,9 @@ fun SearchPanel(repo: AppRepository, prefs: Prefs, onClose: () -> Unit) {
             Menu(
                 app.label,
                 listOf(
-                    (if (repo.isPinned(app)) "unpin from home" else "pin to home") to { repo.togglePin(app) },
-                    "app info" to { repo.openInfo(app) },
-                    "uninstall" to { repo.uninstall(app) },
+                    (if (repo.isPinned(app)) L("unpin from home", "tirar da home") else L("pin to home", "fixar na home")) to { repo.togglePin(app) },
+                    L("app info", "informações do app") to { repo.openInfo(app) },
+                    L("uninstall", "desinstalar") to { repo.uninstall(app) },
                 ),
                 onDismiss = { menuFor = null },
             )

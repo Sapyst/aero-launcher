@@ -58,10 +58,12 @@ fun openAndroidSettings(ctx: Context) = runCatching {
 
 // ---------- weather (same source as the desktop: Open-Meteo, location from the IP) ----------
 
-data class Day(val name: String, val code: Int, val max: Int, val min: Int)
-data class WeatherNow(val temp: Int, val code: Int, val feels: Int, val wind: Int, val city: String, val days: List<Day>) {
-    val text get() = describe(code)
+data class Day(val date: java.time.LocalDate, val code: Int, val max: Int, val min: Int) {
+    /** "today"/"hoje", or the short weekday in the launcher's language ("mon", "seg"). */
+    fun name(L: Lang) = if (date == java.time.LocalDate.now()) L("today", "hoje")
+        else date.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, L.locale).lowercase().trimEnd('.')
 }
+data class WeatherNow(val temp: Int, val code: Int, val feels: Int, val wind: Int, val city: String, val days: List<Day>)
 
 private fun httpGet(url: String): String {
     val conn = URL(url).openConnection() as HttpURLConnection
@@ -72,16 +74,16 @@ private fun httpGet(url: String): String {
 }
 
 /** WMO weather codes (what Open-Meteo returns) in a few words. */
-fun describe(code: Int) = when (code) {
-    0 -> "clear"
-    1, 2 -> "partly cloudy"
-    3 -> "cloudy"
-    45, 48 -> "fog"
-    in 51..57 -> "drizzle"
-    in 61..67 -> "rain"
-    in 71..77 -> "snow"
-    in 80..82 -> "showers"
-    in 95..99 -> "storm"
+fun describe(code: Int, L: Lang) = when (code) {
+    0 -> L("clear", "céu limpo")
+    1, 2 -> L("partly cloudy", "parcialmente nublado")
+    3 -> L("cloudy", "nublado")
+    45, 48 -> L("fog", "neblina")
+    in 51..57 -> L("drizzle", "garoa")
+    in 61..67 -> L("rain", "chuva")
+    in 71..77 -> L("snow", "neve")
+    in 80..82 -> L("showers", "pancadas")
+    in 95..99 -> L("storm", "tempestade")
     else -> "—"
 }
 
@@ -110,9 +112,8 @@ suspend fun loadWeather(): WeatherNow? = withContext(Dispatchers.IO) {
         val cur = w.getJSONObject("current")
         val d = w.getJSONObject("daily")
         val days = (0 until d.getJSONArray("time").length()).map { i ->
-            val date = java.time.LocalDate.parse(d.getJSONArray("time").getString(i))
             Day(
-                name = if (i == 0) "today" else date.dayOfWeek.getDisplayName(java.time.format.TextStyle.SHORT, java.util.Locale.ENGLISH).lowercase(),
+                date = java.time.LocalDate.parse(d.getJSONArray("time").getString(i)),
                 code = d.getJSONArray("weather_code").getInt(i),
                 max = Math.round(d.getJSONArray("temperature_2m_max").getDouble(i)).toInt(),
                 min = Math.round(d.getJSONArray("temperature_2m_min").getDouble(i)).toInt(),

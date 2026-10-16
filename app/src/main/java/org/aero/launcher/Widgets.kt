@@ -108,7 +108,9 @@ fun WeatherWidget(modifier: Modifier, onMenu: (() -> Unit)?) {
     }
     val w = weather
     val L = LocalLang.current
-    TermBox(if (w == null) Kind.WEATHER.title(L) else "${Kind.WEATHER.title(L)} · ${w.city}", modifier, onLongClick = onMenu) {
+    val ctx = LocalContext.current
+    TermBox(if (w == null) Kind.WEATHER.title(L) else "${Kind.WEATHER.title(L)} · ${w.city}", modifier,
+        onClick = { openWeather(ctx, w?.city ?: "", L("weather", "clima")) }, onLongClick = onMenu) {
         if (w == null) { T("…", 30.sp); T(L("loading", "carregando"), 12.sp, pal.dim); return@TermBox }
         Row(verticalAlignment = Alignment.CenterVertically) {
             // Nerd Font icons are drawn wider than their advance: give them a fixed box so nothing overlaps

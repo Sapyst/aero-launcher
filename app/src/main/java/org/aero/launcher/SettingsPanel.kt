@@ -167,6 +167,34 @@ fun SettingsPanel(prefs: Prefs, host: WidgetHost, isDefault: Boolean, onMakeDefa
                 }
             }
             item {
+                val ctx = androidx.compose.ui.platform.LocalContext.current
+                val lock by prefs.lockScreen
+                // the permissions are given in Android's own pages: read them again when we come back
+                var tick by remember { mutableStateOf(0) }
+                androidx.compose.runtime.DisposableEffect(Unit) {
+                    val owner = (ctx as androidx.lifecycle.LifecycleOwner).lifecycle
+                    val obs = androidx.lifecycle.LifecycleEventObserver { _, e -> if (e == androidx.lifecycle.Lifecycle.Event.ON_RESUME) tick++ }
+                    owner.addObserver(obs); onDispose { owner.removeObserver(obs) }
+                }
+                val overlay = remember(tick) { LockService.canShow(ctx) }
+                val media = remember(tick) { LockService.hasMedia(ctx) }
+                TermBox(L("lock screen", "tela de bloqueio"), Modifier.fillMaxWidth()) {
+                    Toggle(L("terminal lock screen (over Android's own)", "tela de bloqueio terminal (sobre a do Android)"), lock) {
+                        prefs.setLockScreen(!lock); LockService.sync(ctx)
+                        if (!lock && !overlay) openPermission(ctx, android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                    }
+                    if (lock) {
+                        Toggle(L("display over other apps (needed)", "sobrepor a outros apps (necessário)"), overlay) {
+                            openPermission(ctx, android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+                        }
+                        Toggle(L("notification access (what is playing)", "acesso a notificações (o que está tocando)"), media) {
+                            openPermission(ctx, android.provider.Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
+                        }
+                        T(L("unlocking is still Android's: pin, fingerprint, extend unlock", "quem desbloqueia continua sendo o android: pin, digital, extend unlock"), 11.sp, pal.dim, Modifier.padding(top = 4.dp))
+                    }
+                }
+            }
+            item {
                 val seconds by prefs.seconds
                 TermBox(Kind.CLOCK.title(L), Modifier.fillMaxWidth()) {
                     Toggle(L("show seconds", "mostrar segundos"), seconds) { prefs.setSeconds(!seconds) }
@@ -263,6 +291,13 @@ private fun AppWidgetProviderInfo.targetCellWidthOrMin(): String =
     else "min ${minWidth}x$minHeight px"
 
 private fun WidgetHost.density() = manager.let { android.content.res.Resources.getSystem().displayMetrics.density }
+
+/** Android's page for one of the launcher's permissions (this app's own entry when Android has one). */
+private fun openPermission(ctx: android.content.Context, action: String) = runCatching {
+    val i = android.content.Intent(action).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+    if (action == android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION) i.data = android.net.Uri.parse("package:${ctx.packageName}")
+    ctx.startActivity(i)
+}
 
 @Composable
 private fun Btn(text: String, onClick: () -> Unit) {

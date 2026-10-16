@@ -28,11 +28,16 @@ class AppRepository(private val ctx: Context) {
     val apps = mutableStateOf<List<App>>(emptyList())
     private val infos = HashMap<String, android.content.pm.LauncherActivityInfo>()
     val pinned = mutableStateOf(prefs.getString("pinned", "")!!.split("\n").filter { it.isNotBlank() })
+    /** An app was really uninstalled (not just updated, or hidden for a moment): package and user serial. */
+    var onRemoved: ((String, Long) -> Unit)? = null
 
     init {
         reload()
         launcherApps.registerCallback(object : LauncherApps.Callback() {
-            override fun onPackageRemoved(packageName: String, user: UserHandle) = reload()
+            override fun onPackageRemoved(packageName: String, user: UserHandle) {
+                reload()
+                onRemoved?.invoke(packageName, users.getSerialNumberForUser(user))
+            }
             override fun onPackageAdded(packageName: String, user: UserHandle) = reload()
             override fun onPackageChanged(packageName: String, user: UserHandle) = reload()
             override fun onPackagesAvailable(names: Array<out String>, user: UserHandle, replacing: Boolean) = reload()

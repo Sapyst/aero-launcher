@@ -37,6 +37,7 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -130,24 +131,36 @@ fun Home(
     val rows by prefs.gridRows
     var screenH by remember { mutableFloatStateOf(0f) }
 
-    val usedPages = (items.filter { it.page >= 0 }.maxOfOrNull { it.page } ?: 0) + 1
+    // What the grid shows: the saved places fitted to the grid as it is right now. The saved places change
+    // only when you move, resize, add or remove something, never because the screen measured smaller for
+    // a moment (an Android update, the home animation, rotation…): when the grid grows back, all is back.
+    // Icons of apps missing from the list for a moment (Android updating them) are hidden, not deleted.
+    val layout = remember(items, cols, rows, apps) {
+        val known = if (apps.isEmpty()) items else items.filter { it.kind != Kind.APP || apps.any { a -> a.key == it.appKey } }
+        fitAll(known.filter { it.page >= 0 }, cols, rows)
+    }
+    val shown = rememberUpdatedState(layout)                          // for the gesture handlers, always current
+    fun save(changed: Item) = prefs.setItems(prefs.items.value.filter { it.id != changed.id } + changed)
+    fun forget(id: String) = prefs.setItems(prefs.items.value.filter { it.id != id })
+
+    val usedPages = (layout.maxOfOrNull { it.page } ?: 0) + 1
     val basePages = maxOf(pagesPref, usedPages)                    // workspaces you created, empty ones too
     val pageCount = basePages + if (drag.active) 1 else 0          // an extra empty page to drop on while dragging
     val pager = rememberPagerState(pageCount = { pageCount })
 
     LaunchedEffect(homePresses) { focus.clearFocus(); menu = false; itemMenu = null; resizing = null; pager.animateScrollToPage(0) }
 
-    // Keep the grid tidy: place new things (page -1), refit after a change of columns or rows, and drop
-    // icons of uninstalled apps. Empty pages stay: they are workspaces you made.
-    LaunchedEffect(items, cols, rows, apps) {
+    // New things (page -1) get the first free cells and are saved there. Empty pages stay: they are
+    // workspaces you made. (Icons of uninstalled apps go in MainActivity, on Android's "removed".)
+    LaunchedEffect(items, cols, rows) {
         if (drag.active) return@LaunchedEffect
-        var list = items
-        if (apps.isNotEmpty()) list = list.filter { it.kind != Kind.APP || apps.any { a -> a.key == it.appKey } }
-        val ok = list.filter { it.page >= 0 && it.x + it.w <= cols && it.y + it.h <= rows }
-        var placed = ok
-        for (t in list - ok.toSet()) placed = placed + firstFree(placed, t, cols, rows, t.page.coerceAtLeast(0))
-        if (placed.toSet() != items.toSet()) prefs.setItems(placed)
-        val need = (placed.maxOfOrNull { it.page } ?: 0) + 1
+        val new = items.filter { it.page < 0 }
+        if (new.isNotEmpty()) {
+            var placed = layout
+            for (t in new) placed = placed + firstFree(placed, t, cols, rows)
+            prefs.setItems(items.filter { it.page >= 0 } + placed.filter { p -> new.any { it.id == p.id } })
+        }
+        val need = (items.maxOfOrNull { it.page } ?: 0) + 1
         if (need > prefs.pages.value) prefs.setPages(need)
     }
 
@@ -164,7 +177,7 @@ fun Home(
             x = (topLeft.x / cellW).roundToInt().coerceIn(0, cols - sized.w),
             y = (topLeft.y / cellH).roundToInt().coerceIn(0, rows - sized.h),
         )
-        val others = prefs.items.value.filter { o -> o.id != it.id }
+        val others = shown.value.filter { o -> o.id != it.id }
         return if (fits(others, cand, cols, rows)) cand else nearestFree(others, cand, cols, rows)
     }
 
@@ -183,7 +196,7 @@ fun Home(
             "remove" -> {
                 if (!drag.isNew) {
                     if (it.kind == Kind.ANDROID) host.remove(it.widgetId)
-                    prefs.setItems(prefs.items.value.filter { o -> o.id != it.id })
+                    forget(it.id)
                 }
                 drag.item = null; return@release
             }
@@ -201,7 +214,7 @@ fun Home(
             glide.snapTo(drag.finger - drag.grab)
             val to = grid?.takeIf { g -> g.isAttached }?.localToWindow(Offset(dest.x * cellW, dest.y * cellH)) ?: glide.value
             glide.animateTo(to, spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMediumLow))
-            prefs.setItems(prefs.items.value.filter { o -> o.id != dest.id } + dest)
+            save(dest)
             drag.item = null
             landing = false
         }
@@ -231,7 +244,7 @@ fun Home(
             val down = awaitFirstDown(requireUnconsumed = false)
             val press = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
             val local = press.position
-            val hit = prefs.items.value.firstOrNull { it.page == pager.currentPage && cellRect(it).contains(local) }
+            val hit = shown.value.firstOrNull { it.page == pager.currentPage && cellRect(it).contains(local) }
             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
             press.consume()
             if (hit == null) { if (resizing != null) resizing = null else menu = true }
@@ -280,10 +293,11 @@ fun Home(
                 val cw = constraints.maxWidth / cols.toFloat()
                 val newRows = if (rowsManual > 0) rowsManual else (constraints.maxHeight / cw).toInt().coerceAtLeast(4)
                 cellW = cw
-                cellH = constraints.maxHeight / newRows.toFloat()
+                cellH = constraints.maxHeight / rows.toFloat()
                 drag.cell = Offset(cellW, cellH)
                 gridWidth = constraints.maxWidth.toFloat()
-                LaunchedEffect(newRows) { if (newRows != prefs.gridRows.value && imeBottom == 0f) prefs.setGridRows(newRows) }
+                // the height settles for a moment first (insets arriving, the home animation): only then it counts
+                LaunchedEffect(newRows) { delay(400); if (newRows != prefs.gridRows.value && imeBottom == 0f) prefs.setGridRows(newRows) }
                 Box(
                     Modifier.fillMaxSize()
                         .onGloballyPositioned { grid = it }
@@ -292,7 +306,7 @@ fun Home(
                 ) {
                     HorizontalPager(state = pager, modifier = Modifier.fillMaxSize(), userScrollEnabled = !drag.active && resizing == null, beyondViewportPageCount = 1) { page ->
                         Box(Modifier.fillMaxSize()) {
-                            items.filter { it.page == page }.forEach { stored ->
+                            layout.filter { it.page == page }.forEach { stored ->
                                 key(stored.id) {
                                     val item = if (stored.id == resizing) resizeTo ?: stored else stored
                                     val hidden = drag.item?.id == item.id
@@ -317,9 +331,9 @@ fun Home(
                                 )
                             }
                             // resize: four handles on the edges; drag one and the widget follows, cell by cell
-                            if (page == pager.currentPage) items.firstOrNull { it.id == resizing }?.let { base ->
+                            if (page == pager.currentPage) layout.firstOrNull { it.id == resizing }?.let { base ->
                                 val cur = resizeTo ?: base
-                                val others = items.filter { it.id != base.id }
+                                val others = layout.filter { it.id != base.id }
                                 val ok = fits(others, cur, cols, rows)
                                 Box(
                                     Modifier
@@ -347,7 +361,7 @@ fun Home(
                                                     onDragStart = { acc = Offset.Zero },
                                                     onDragEnd = {
                                                         val c = resizeTo
-                                                        if (c != null && fits(others, c, cols, rows)) prefs.setItems(others + c)
+                                                        if (c != null && fits(others, c, cols, rows)) save(c)
                                                         resizeTo = null
                                                     },
                                                     onDragCancel = { resizeTo = null },
@@ -406,7 +420,7 @@ fun Home(
                     L("× remove", "× remover") to {
                         items.firstOrNull { it.id == resizing }?.let { r ->
                             if (r.kind == Kind.ANDROID) host.remove(r.widgetId)
-                            prefs.setItems(items.filter { it.id != r.id })
+                            forget(r.id)
                         }
                         resizing = null
                     },
@@ -439,7 +453,7 @@ fun Home(
                     prefs.setPages(basePages + 1)
                     scope.launch { delay(60); pager.animateScrollToPage(basePages) }
                 },
-                if (basePages > 1 && items.none { it.page == pager.currentPage }) L("delete this empty workspace", "apagar esta área vazia") to {
+                if (basePages > 1 && layout.none { it.page == pager.currentPage }) L("delete this empty workspace", "apagar esta área vazia") to {
                     val gone = pager.currentPage
                     prefs.setItems(items.map { if (it.page > gone) it.copy(page = it.page - 1) else it })
                     prefs.setPages(basePages - 1)
@@ -451,19 +465,19 @@ fun Home(
             onDismiss = { menu = false },
         )
         itemMenu?.let { id ->
-            val it = items.firstOrNull { i -> i.id == id }
+            val it = layout.firstOrNull { i -> i.id == id }
             if (it == null) { itemMenu = null; return@let }
-            val others = items.filter { o -> o.id != id }
+            val others = layout.filter { o -> o.id != id }
             fun resize(w: Int, h: Int) {
                 val c = it.copy(w = w, h = h)
                 val ok = if (fits(others, c, cols, rows)) c else c.copy(x = (cols - w).coerceAtMost(it.x)).takeIf { s -> fits(others, s, cols, rows) }
-                if (ok != null) prefs.setItems(others + ok)
+                if (ok != null) save(ok)
             }
             val app = if (it.kind == Kind.APP) repo.byKey(it.appKey) else null
             val entries: List<Pair<String, () -> Unit>> = if (app != null) listOf(
                 L("app info", "informações do app") to { repo.openInfo(app) },
                 L("uninstall", "desinstalar") to { repo.uninstall(app) },
-                L("remove from home", "tirar da home") to { prefs.setItems(others) },
+                L("remove from home", "tirar da home") to { forget(it.id) },
             ) else listOf(
                 L("wider", "mais largo") to { resize(it.w + 1, it.h) },
                 L("narrower", "mais estreito") to { if (it.w > 1) resize(it.w - 1, it.h) },
@@ -471,7 +485,7 @@ fun Home(
                 L("shorter", "mais baixo") to { if (it.h > 1) resize(it.w, it.h - 1) },
                 L("remove", "remover") to {
                     if (it.kind == Kind.ANDROID) host.remove(it.widgetId)
-                    prefs.setItems(others)
+                    forget(it.id)
                 },
                 L("launcher settings", "configurações do launcher") to onOpenSettings,
             )

@@ -6,12 +6,24 @@
     <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
     <!-- "uninstall" in the app menu -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- the terminal lock screen (Lock.kt): a service that is always on, opens its screen when the
+         display goes off ("display over other apps" lets it), and comes back after a reboot -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Android 11+: we only get to see the apps we declare interest in: every app with an icon -->
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <!-- the phone's weather app, for the weather widget -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.APP_WEATHER" />
         </intent>
     </queries>
 
@@ -41,5 +53,44 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- the terminal lock screen: its own task, so closing it goes back to whatever was open -->
+        <activity
+            android:name=".LockActivity"
+            android:exported="false"
+            android:launchMode="singleInstance"
+            android:taskAffinity="org.aero.launcher.lock"
+            android:excludeFromRecents="true"
+            android:noHistory="false"
+            android:showWhenLocked="true"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Aero.Lock"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density" />
+
+        <service
+            android:name=".LockService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Custom lock screen: shows the launcher's lock screen when the display turns off" />
+        </service>
+
+        <receiver android:name=".LockBoot" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- "notification access": what is playing (and how many notifications) on the lock screen -->
+        <service
+            android:name=".MediaListener"
+            android:exported="false"
+            android:label="Aero Launcher lock screen"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

@@ -25,6 +25,26 @@ fun expandNotifications(ctx: Context) {
     }
 }
 
+/** Weather apps of the big phone makers and the usual stores, tried in order when Android has no "weather" app set. */
+private val WEATHER_APPS = listOf(
+    "com.google.android.apps.weather",      // Pixel Weather
+    "com.sec.android.daemonapp",            // Samsung Weather
+    "com.miui.weather2", "net.oneplus.weather", "com.motorola.timeweatherwidget", "com.oplus.weather",
+    "com.accuweather.android", "com.weather.Weather",
+)
+
+/**
+ * Opens the phone's weather app, whichever it is: the one Android knows as the weather app (Android 14+),
+ * else a known one that is installed, else the forecast for [city] in the browser.
+ */
+fun openWeather(ctx: Context, city: String, title: String) {
+    fun start(i: Intent) = runCatching { ctx.startActivity(i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }.isSuccess
+    if (android.os.Build.VERSION.SDK_INT >= 34 &&
+        start(Intent.makeMainSelectorActivity(Intent.ACTION_MAIN, Intent.CATEGORY_APP_WEATHER))) return
+    for (pkg in WEATHER_APPS) ctx.packageManager.getLaunchIntentForPackage(pkg)?.let { if (start(it)) return }
+    start(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode("$title $city".trim()))))
+}
+
 /** Opens the search in the browser the user chose as default (Android picks it from the link). */
 fun webSearch(ctx: Context, query: String, engine: String = "google") = runCatching {
     val base = ENGINES[engine] ?: ENGINES.getValue("google")

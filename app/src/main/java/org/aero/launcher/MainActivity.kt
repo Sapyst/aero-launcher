@@ -58,7 +58,12 @@ class MainActivity : ComponentActivity() {
         onBackPressedDispatcher.addCallback(this) { }        // Back on the home screen does nothing
         val repo = AppRepository(this)
         prefs = Prefs(this)
+        // uninstalled for real: its icons leave the home (an update or a moment out of the list keeps them)
+        repo.onRemoved = { pkg, serial ->
+            prefs.setItems(prefs.items.value.filter { it.kind != Kind.APP || !(it.appKey.startsWith("$pkg/") && it.appKey.endsWith("#$serial")) })
+        }
         widgets = WidgetHost(this)
+        LockService.sync(this)                                 // the terminal lock screen, if it is on
         val art = AsciiArt.load(this, "eris.txt")
         setContent {
             AeroTheme(prefs.theme.value, prefs.lang.value, prefs.opacity.value, prefs.font.value, prefs.textScale.value) {

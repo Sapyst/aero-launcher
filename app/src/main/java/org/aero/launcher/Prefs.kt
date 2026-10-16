@@ -52,6 +52,7 @@ class Prefs(ctx: Context) {
     val showPrompt = mutableStateOf(sp.getBoolean("show_prompt", true))
     val fetchLogo = mutableStateOf(sp.getString("fetch_logo", "")!!)       // "" = the robot
     val fetchInvert = mutableStateOf(sp.getBoolean("fetch_invert", false))
+    val lockScreen = mutableStateOf(sp.getBoolean("lock_screen", false))    // the terminal lock screen (Lock.kt)
     /** We ask once, on the first start, to become the home screen; after that only the banner asks. */
     val askedHome get() = sp.getBoolean("asked_home", false)
     fun setAskedHome() = sp.edit().putBoolean("asked_home", true).apply()
@@ -79,6 +80,7 @@ class Prefs(ctx: Context) {
     fun setIconScale(v: Float) { iconScale.value = v; sp.edit().putFloat("icon_scale", v).apply() }
     fun setFetchLogo(v: String) { fetchLogo.value = v; sp.edit().putString("fetch_logo", v).apply() }
     fun setFetchInvert(v: Boolean) { fetchInvert.value = v; sp.edit().putBoolean("fetch_invert", v).apply() }
+    fun setLockScreen(v: Boolean) { lockScreen.value = v; sp.edit().putBoolean("lock_screen", v).apply() }
     fun setShowPrompt(v: Boolean) { showPrompt.value = v; sp.edit().putBoolean("show_prompt", v).apply() }
 
     /** Adds to the home: page -1 = "not placed yet", the home puts it in the first free cells. */

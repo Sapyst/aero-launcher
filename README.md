@@ -65,4 +65,4 @@ The release APK is signed with the builder's debug key: updates must come from t
 - Font: JetBrains Mono NL Nerd Font, SIL Open Font License (`licenses/JetBrainsMono-OFL.txt`).
 
 ## License
-MIT, see `LICENSE`.
+GPL-3.0-or-later, see `LICENSE` (earlier releases were MIT and stay MIT).
